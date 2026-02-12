@@ -1,0 +1,26 @@
+Port 22
+AddressFamily any
+ListenAddress 0.0.0.0
+
+# Logging
+SyslogFacility AUTH
+LogLevel INFO
+
+# Authentication
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile /etc/lockbox/authorized_keys
+
+# Restrict to lockbox user only
+AllowUsers lockbox
+
+# Security
+X11Forwarding no
+PermitTunnel no
+AllowAgentForwarding no
+AllowTcpForwarding no
+
+# Force lockbox-wrapper for lockbox user
+Match User lockbox
+    ForceCommand /usr/local/bin/lockbox-wrapper

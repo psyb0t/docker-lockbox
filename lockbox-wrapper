@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+import grp
+import json
+import os
+import pwd
+import stat
+import sys
+import shlex
+import time
+
+os.umask(0o002)
+
+WORK_DIR = "/work"
+
+CONFIG_PATH = "/etc/lockbox/allowed.json"
+
+
+def load_allowed():
+    """Load allowed commands from JSON config file."""
+    try:
+        with open(CONFIG_PATH, "r") as f:
+            allowed = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as e:
+        sys.stderr.write(f"Error: invalid JSON in {CONFIG_PATH}: {e}\n")
+        sys.exit(1)
+
+    if not isinstance(allowed, dict):
+        sys.stderr.write(f"Error: {CONFIG_PATH} must contain a JSON object\n")
+        sys.exit(1)
+
+    return allowed
+
+
+ALLOWED = load_allowed()
+
+BUILTINS = {"ls", "get", "put", "rm", "rmdir", "rrmdir", "mkdir"}
+
+ALL_COMMANDS = sorted(list(ALLOWED.keys()) + list(BUILTINS))
+
+
+def safe_path(user_path):
+    """Resolve user_path to an absolute path under WORK_DIR.
+    Returns the resolved path or None if it escapes WORK_DIR."""
+    if not user_path:
+        return WORK_DIR
+
+    if user_path.startswith("/"):
+        joined = os.path.join(WORK_DIR, user_path.lstrip("/"))
+    else:
+        joined = os.path.join(WORK_DIR, user_path)
+
+    resolved = os.path.realpath(joined)
+
+    if resolved != WORK_DIR and not resolved.startswith(WORK_DIR + "/"):
+        return None
+
+    return resolved
+
+
+def die(msg):
+    sys.stderr.write(f"Error: {msg}\n")
+    sys.exit(1)
+
+
+def format_mode(st_mode):
+    parts = []
+    for who in ("USR", "GRP", "OTH"):
+        r = "r" if st_mode & getattr(stat, f"S_IR{who}") else "-"
+        w = "w" if st_mode & getattr(stat, f"S_IW{who}") else "-"
+        x = "x" if st_mode & getattr(stat, f"S_IX{who}") else "-"
+        parts.append(r + w + x)
+
+    return "".join(parts)
+
+
+def owner_name(uid):
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return str(uid)
+
+
+def group_name(gid):
+    try:
+        return grp.getgrgid(gid).gr_name
+    except KeyError:
+        return str(gid)
+
+
+def format_time(mtime):
+    t = time.localtime(mtime)
+    now = time.localtime()
+    if t.tm_year == now.tm_year:
+        return time.strftime("%b %e %H:%M", t)
+
+    return time.strftime("%b %e  %Y", t)
+
+
+def file_info_json(path):
+    st = os.stat(path)
+    is_dir = stat.S_ISDIR(st.st_mode)
+    return {
+        "name": os.path.basename(path),
+        "size": st.st_size,
+        "modified": int(st.st_mtime),
+        "isDir": is_dir,
+        "mode": format_mode(st.st_mode),
+        "owner": owner_name(st.st_uid),
+        "group": group_name(st.st_gid),
+        "links": st.st_nlink,
+    }
+
+
+def file_info_text(path):
+    st = os.stat(path)
+    is_dir = stat.S_ISDIR(st.st_mode)
+    kind = "d" if is_dir else "-"
+    mode = format_mode(st.st_mode)
+    owner = owner_name(st.st_uid)
+    group = group_name(st.st_gid)
+    mtime = format_time(st.st_mtime)
+    name = os.path.basename(path)
+    if is_dir:
+        name += "/"
+
+    return f"{kind}{mode} {st.st_nlink:>3} {owner:<8} {group:<8} {st.st_size:>8} {mtime} {name}"
+
+
+def cmd_ls(args):
+    as_json = False
+    paths = []
+    for arg in args:
+        if arg == "--json":
+            as_json = True
+            continue
+        paths.append(arg)
+
+    target = safe_path(paths[0] if paths else "")
+    if not target:
+        die("path outside /work")
+
+    if not os.path.exists(target):
+        die("no such file or directory")
+
+    if not os.path.isdir(target):
+        if as_json:
+            sys.stdout.write(json.dumps([file_info_json(target)]) + "\n")
+            return
+        sys.stdout.write(file_info_text(target) + "\n")
+        return
+
+    try:
+        entries = sorted(os.listdir(target))
+    except PermissionError:
+        die("permission denied")
+
+    if as_json:
+        result = []
+        for entry in entries:
+            result.append(file_info_json(os.path.join(target, entry)))
+        sys.stdout.write(json.dumps(result) + "\n")
+        return
+
+    for entry in entries:
+        sys.stdout.write(file_info_text(os.path.join(target, entry)) + "\n")
+
+
+def cmd_get(args):
+    if not args:
+        die("usage: get <path>")
+
+    target = safe_path(args[0])
+    if not target:
+        die("path outside /work")
+
+    if not os.path.isfile(target):
+        die("no such file")
+
+    with open(target, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            sys.stdout.buffer.write(chunk)
+
+
+def cmd_put(args):
+    if not args:
+        die("usage: put <path>")
+
+    target = safe_path(args[0])
+    if not target:
+        die("path outside /work")
+
+    parent = os.path.dirname(target)
+    if not os.path.isdir(parent):
+        die("parent directory does not exist")
+
+    with open(target, "wb") as f:
+        while True:
+            chunk = sys.stdin.buffer.read(65536)
+            if not chunk:
+                break
+            f.write(chunk)
+
+
+def cmd_rm(args):
+    if not args:
+        die("usage: rm <path>")
+
+    target = safe_path(args[0])
+    if not target:
+        die("path outside /work")
+
+    if target == WORK_DIR:
+        die("cannot remove /work")
+
+    if not os.path.exists(target):
+        die("no such file or directory")
+
+    if os.path.isdir(target):
+        die("is a directory, not removing")
+
+    os.remove(target)
+
+
+def cmd_rmdir(args):
+    if not args:
+        die("usage: rmdir <path>")
+
+    target = safe_path(args[0])
+    if not target:
+        die("path outside /work")
+
+    if target == WORK_DIR:
+        die("cannot remove /work")
+
+    if not os.path.isdir(target):
+        die("not a directory")
+
+    if os.listdir(target):
+        die("directory not empty")
+
+    os.rmdir(target)
+
+
+def cmd_rrmdir(args):
+    if not args:
+        die("usage: rrmdir <path>")
+
+    target = safe_path(args[0])
+    if not target:
+        die("path outside /work")
+
+    if target == WORK_DIR:
+        die("cannot remove /work")
+
+    if not os.path.isdir(target):
+        die("not a directory")
+
+    import shutil
+    shutil.rmtree(target)
+
+
+def cmd_mkdir(args):
+    if not args:
+        die("usage: mkdir <path>")
+
+    target = safe_path(args[0])
+    if not target:
+        die("path outside /work")
+
+    os.makedirs(target, exist_ok=True)
+
+
+def main():
+    cmd = os.environ.get("SSH_ORIGINAL_COMMAND", "").strip()
+
+    if not cmd:
+        name = os.environ.get("LOCKBOX_USER", "lockbox")
+        sys.stderr.write(f"Usage: ssh {name}@host '<command> [args]'\n")
+        sys.stderr.write(f"Allowed commands: {', '.join(ALL_COMMANDS)}\n")
+        sys.exit(1)
+
+    try:
+        parts = shlex.split(cmd)
+    except ValueError as e:
+        die(f"invalid command syntax: {e}")
+
+    if not parts:
+        die("empty command")
+
+    binary = parts[0]
+    args = parts[1:]
+
+    builtins = {
+        "ls": cmd_ls,
+        "get": cmd_get,
+        "put": cmd_put,
+        "rm": cmd_rm,
+        "rmdir": cmd_rmdir,
+        "rrmdir": cmd_rrmdir,
+        "mkdir": cmd_mkdir,
+    }
+
+    if binary in builtins:
+        builtins[binary](args)
+        return
+
+    if binary not in ALLOWED:
+        die(f"'{binary}' not allowed")
+        return
+
+    os.execv(ALLOWED[binary], [binary] + args)
+
+
+if __name__ == "__main__":
+    main()

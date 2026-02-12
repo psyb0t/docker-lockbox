@@ -1,0 +1,6 @@
+.research_files
+.git
+*.md
+!README.md
+authorized_keys
+work/

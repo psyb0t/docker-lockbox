@@ -1,0 +1,41 @@
+#!/bin/bash
+set -e
+
+# Rename lockbox user/group if LOCKBOX_USER is set
+TARGET_USER="${LOCKBOX_USER:-lockbox}"
+if [ "$TARGET_USER" != "lockbox" ]; then
+    groupmod -n "$TARGET_USER" lockbox
+    usermod -l "$TARGET_USER" -d "/home/$TARGET_USER" -m lockbox
+    sed -i "s/AllowUsers lockbox/AllowUsers $TARGET_USER/" /etc/ssh/sshd_config
+    sed -i "s/Match User lockbox/Match User $TARGET_USER/" /etc/ssh/sshd_config
+fi
+
+# Adjust UID/GID to match host user if env vars provided
+TARGET_UID="${LOCKBOX_UID:-1000}"
+TARGET_GID="${LOCKBOX_GID:-1000}"
+CURRENT_UID=$(id -u "$TARGET_USER")
+CURRENT_GID=$(id -g "$TARGET_USER")
+
+if [ "$TARGET_GID" != "$CURRENT_GID" ]; then
+    groupmod -g "$TARGET_GID" "$TARGET_USER"
+fi
+
+if [ "$TARGET_UID" != "$CURRENT_UID" ]; then
+    usermod -u "$TARGET_UID" -o "$TARGET_USER"
+fi
+
+# Unlock the account so sshd allows pubkey auth
+passwd -u "$TARGET_USER" >/dev/null 2>&1 || usermod -p '*' "$TARGET_USER"
+
+chown "$TARGET_USER:$TARGET_USER" "/home/$TARGET_USER" /work
+
+# Run entrypoint extension scripts if any
+if [ -d "/etc/lockbox/entrypoint.d" ]; then
+    shopt -s nullglob
+    for script in /etc/lockbox/entrypoint.d/*.sh; do
+        [ -x "$script" ] && "$script"
+    done
+    shopt -u nullglob
+fi
+
+exec "$@"
