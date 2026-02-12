@@ -4,6 +4,23 @@
 
 Locked-down SSH container with sandboxed file operations. Use as a base image to build your own dedicated tool containers - just provide a list of allowed commands and install your binaries. No shell access, no injection bullshit.
 
+## Table of Contents
+
+- [What You Get](#what-you-get)
+- [Security](#security)
+- [Quick Start](#quick-start)
+- [File Operations](#file-operations)
+- [Configuration](#configuration)
+  - [Allowed Commands](#allowed-commands-etclockboxallowedjson)
+  - [Entrypoint Extensions](#entrypoint-extensions-etclockboxentrypointdsh)
+  - [SSH Username](#ssh-username-lockbox_user-env-var)
+  - [Environment Variables](#environment-variables)
+  - [Volumes](#volumes)
+- [Installer Generator](#installer-generator)
+- [Building](#building)
+- [Built on Lockbox](#built-on-lockbox)
+- [License](#license)
+
 ## What You Get
 
 - **SSH key auth only** - no passwords, no keyboard-interactive
@@ -12,6 +29,15 @@ Locked-down SSH container with sandboxed file operations. Use as a base image to
 - **No injection** - `&&`, `;`, `|`, `$()` are just literal arguments. No shell means shell metacharacters are meaningless
 - **No forwarding** - TCP forwarding, tunneling, agent forwarding, X11 - all disabled
 - **Extensible** - downstream images add their own allowed commands via a JSON config file
+
+## Security
+
+- **No shell access** - every command goes through a Python wrapper that parses with `shlex.split()` and executes via `os.execv()` - no shell involved at any point
+- **Whitelist only** - if the command isn't in the allowed list, it doesn't run
+- **No injection** - `&&`, `;`, `|`, `$()` become literal arguments to the binary. No shell means shell metacharacters are meaningless
+- **SSH key auth only** - passwords disabled, keyboard-interactive disabled
+- **No forwarding** - TCP forwarding, tunneling, agent forwarding, X11 - all disabled
+- **Path sandboxing** - all file operations resolve and validate paths stay within `/work`
 
 ## Quick Start
 
@@ -143,29 +169,13 @@ Users then connect with `ssh myapp@host` instead of `ssh lockbox@host`.
 | `LOCKBOX_GID` | `1000`    | GID for the lockbox user (match host)    |
 | `LOCKBOX_USER`| `lockbox` | SSH username (renames system user at startup) |
 
-## Volumes
+### Volumes
 
 | Path                            | Description                       |
 | ------------------------------- | --------------------------------- |
 | `/work`                         | Input/output files - your workspace |
 | `/etc/lockbox/authorized_keys` | SSH public keys (mount read-only) |
 | `/etc/lockbox/host_keys`       | SSH host keys (persists across container recreates) |
-
-## Building
-
-```bash
-make build
-make test    # builds test image and runs integration tests
-```
-
-## Security
-
-- **No shell access** - every command goes through a Python wrapper that parses with `shlex.split()` and executes via `os.execv()` - no shell involved at any point
-- **Whitelist only** - if the command isn't in the allowed list, it doesn't run
-- **No injection** - `&&`, `;`, `|`, `$()` become literal arguments to the binary. No shell means shell metacharacters are meaningless
-- **SSH key auth only** - passwords disabled, keyboard-interactive disabled
-- **No forwarding** - TCP forwarding, tunneling, agent forwarding, X11 - all disabled
-- **Path sandboxing** - all file operations resolve and validate paths stay within `/work`
 
 ## Installer Generator
 
@@ -198,6 +208,13 @@ volumes:
 | `volumes` | Extra volumes with CLI flags for runtime configuration |
 
 The generated `install.sh` gives users a one-liner install (`curl | sudo bash`) that sets up `~/.myapp/` with docker-compose, authorized_keys, host_keys, work dir, and a CLI wrapper with `start`, `stop`, `upgrade`, `uninstall`, `status`, and `logs` commands. Resource limits (`-c` cpus, `-r` memory, `-s` swap) are always available - defaults to unlimited if not specified.
+
+## Building
+
+```bash
+make build
+make test    # builds test image and runs integration tests
+```
 
 ## Built on Lockbox
 
