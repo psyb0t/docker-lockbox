@@ -45,7 +45,7 @@ Build and run:
 ```bash
 docker build -t myapp .
 cat ~/.ssh/id_rsa.pub > authorized_keys
-mkdir -p work
+mkdir -p work host_keys
 
 docker run -d \
   --name myapp \
@@ -54,34 +54,11 @@ docker run -d \
   -e "LOCKBOX_UID=$(id -u)" \
   -e "LOCKBOX_GID=$(id -g)" \
   -v $(pwd)/authorized_keys:/etc/lockbox/authorized_keys:ro \
+  -v $(pwd)/host_keys:/etc/lockbox/host_keys \
   -v $(pwd)/work:/work \
   myapp
 
 ssh -p 2222 myapp@localhost "ffmpeg -version"
-```
-
-### Standalone with install.sh
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/psyb0t/docker-lockbox/main/install.sh | sudo bash
-```
-
-This sets up `~/.lockbox/` with the docker-compose file, authorized_keys, and work directory, then drops a `lockbox` command into `/usr/local/bin`.
-
-```bash
-cat ~/.ssh/id_rsa.pub >> ~/.lockbox/authorized_keys
-lockbox start -d
-ssh -p 2222 lockbox@localhost "ls"
-```
-
-```bash
-lockbox start           # foreground
-lockbox start -d        # detached
-lockbox start -d -p 22  # detached on custom port (default 2222)
-lockbox stop            # stop
-lockbox upgrade         # pull latest image, asks to stop/restart if running
-lockbox status          # show status
-lockbox logs            # show logs
 ```
 
 ### docker run
@@ -90,7 +67,7 @@ lockbox logs            # show logs
 docker pull psyb0t/lockbox
 
 cat ~/.ssh/id_rsa.pub > authorized_keys
-mkdir -p work
+mkdir -p work host_keys
 
 docker run -d \
   --name lockbox \
@@ -99,6 +76,7 @@ docker run -d \
   -e "LOCKBOX_UID=$(id -u)" \
   -e "LOCKBOX_GID=$(id -g)" \
   -v $(pwd)/authorized_keys:/etc/lockbox/authorized_keys:ro \
+  -v $(pwd)/host_keys:/etc/lockbox/host_keys \
   -v $(pwd)/work:/work \
   psyb0t/lockbox
 
@@ -193,6 +171,7 @@ Users then connect with `ssh myapp@host` instead of `ssh lockbox@host`.
 | ------------------------------- | --------------------------------- |
 | `/work`                         | Input/output files - your workspace |
 | `/etc/lockbox/authorized_keys` | SSH public keys (mount read-only) |
+| `/etc/lockbox/host_keys`       | SSH host keys (persists across container recreates) |
 
 ## Building
 

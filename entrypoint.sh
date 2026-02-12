@@ -27,6 +27,16 @@ if [ "$TARGET_UID" != "$CURRENT_UID" ]; then
     usermod -u "$TARGET_UID" -o "$TARGET_USER"
 fi
 
+# Persist SSH host keys across container recreates
+HOST_KEYS_DIR="/etc/lockbox/host_keys"
+if [ -d "$HOST_KEYS_DIR" ]; then
+    if ls "$HOST_KEYS_DIR"/ssh_host_* >/dev/null 2>&1; then
+        cp "$HOST_KEYS_DIR"/ssh_host_* /etc/ssh/
+    else
+        cp /etc/ssh/ssh_host_* "$HOST_KEYS_DIR/"
+    fi
+fi
+
 # Unlock the account so sshd allows pubkey auth
 passwd -u "$TARGET_USER" >/dev/null 2>&1 || usermod -p '*' "$TARGET_USER"
 
