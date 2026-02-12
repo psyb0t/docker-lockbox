@@ -10,6 +10,9 @@ if [ "$TARGET_USER" != "lockbox" ]; then
     sed -i "s/Match User lockbox/Match User $TARGET_USER/" /etc/ssh/sshd_config
 fi
 
+# Persist username for lockbox-wrapper (sshd strips env vars from ForceCommand children)
+echo "$TARGET_USER" > /etc/lockbox/user
+
 # Adjust UID/GID to match host user if env vars provided
 TARGET_UID="${LOCKBOX_UID:-1000}"
 TARGET_GID="${LOCKBOX_GID:-1000}"
