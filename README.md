@@ -4,6 +4,8 @@
 
 Locked-down SSH container with sandboxed file operations. Use as a base image to build your own dedicated tool containers - just provide a list of allowed commands and install your binaries. No shell access, no injection bullshit.
 
+Skip the HTTP API wrapper. Any CLI tool instantly becomes a secure, remotely accessible service over SSH - no REST endpoints, no request parsing, no serialization layer. Just `ssh myapp@host "tool --flag arg"` and you're done. Even better - route it through Cloudflare Tunnel or Tailscale and you've got secure remote access without exposing ports.
+
 ## Table of Contents
 
 - [What You Get](#what-you-get)
