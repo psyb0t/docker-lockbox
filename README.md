@@ -223,6 +223,7 @@ make test    # builds test image and runs integration tests
 | Image | Description |
 | ----- | ----------- |
 | [psyb0t/mediaproc](https://github.com/psyb0t/docker-mediaproc) | FFmpeg, Sox, ImageMagick, 2200+ fonts - media processing over SSH |
+| [psyb0t/qwenspeak](https://github.com/psyb0t/docker-qwenspeak) | Qwen3-TTS text-to-speech over SSH - preset voices, voice cloning, voice design |
 
 ## License
 
