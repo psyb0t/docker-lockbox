@@ -234,6 +234,69 @@ run_test "get abs path remapped" "get /etc/passwd" "no such file"
 run_test_negative "get abs path no leak" "get /etc/passwd" "root:"
 
 echo ""
+echo "=== Testing host key persistence ==="
+
+# Create a host_keys dir, start container with it mounted, grab fingerprint,
+# destroy container, start a new one with same mount, verify fingerprint matches.
+HOST_KEYS_DIR="$TMPDIR/host_keys"
+mkdir -p "$HOST_KEYS_DIR"
+CONTAINER2="lockbox-hostkey-test-$$"
+
+docker run -d \
+    --name "$CONTAINER2" \
+    -e "LOCKBOX_UID=$(id -u)" \
+    -e "LOCKBOX_GID=$(id -g)" \
+    -v "$HOST_KEYS_DIR:/etc/lockbox/host_keys" \
+    "$IMAGE" >/dev/null
+
+docker cp "$AUTHKEYS" "$CONTAINER2:/etc/lockbox/authorized_keys"
+docker exec "$CONTAINER2" chmod 644 /etc/lockbox/authorized_keys
+
+# Wait for sshd
+for i in $(seq 1 30); do
+    if docker exec "$CONTAINER2" pgrep sshd >/dev/null 2>&1; then break; fi
+    sleep 0.5
+done
+sleep 1
+
+# Get the host key fingerprint
+FP1=$(docker exec "$CONTAINER2" ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | awk '{print $2}')
+
+# Verify keys were copied to mounted dir
+if ls "$HOST_KEYS_DIR"/ssh_host_* >/dev/null 2>&1; then
+    pass "host keys saved to volume"
+else
+    fail "host keys saved to volume" "no keys found in $HOST_KEYS_DIR"
+fi
+
+# Destroy and recreate
+docker rm -f "$CONTAINER2" >/dev/null 2>&1
+
+CONTAINER3="lockbox-hostkey-test2-$$"
+docker run -d \
+    --name "$CONTAINER3" \
+    -e "LOCKBOX_UID=$(id -u)" \
+    -e "LOCKBOX_GID=$(id -g)" \
+    -v "$HOST_KEYS_DIR:/etc/lockbox/host_keys" \
+    "$IMAGE" >/dev/null
+
+for i in $(seq 1 30); do
+    if docker exec "$CONTAINER3" pgrep sshd >/dev/null 2>&1; then break; fi
+    sleep 0.5
+done
+sleep 1
+
+FP2=$(docker exec "$CONTAINER3" ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | awk '{print $2}')
+
+if [ "$FP1" = "$FP2" ] && [ -n "$FP1" ]; then
+    pass "host keys persist across recreates"
+else
+    fail "host keys persist across recreates" "fp1=$FP1 fp2=$FP2"
+fi
+
+docker rm -f "$CONTAINER2" "$CONTAINER3" >/dev/null 2>&1 || true
+
+echo ""
 echo "================================"
 echo "Results: $PASSED passed, $FAILED failed, $TOTAL total"
 echo "================================"
