@@ -210,6 +210,12 @@ make test    # builds test image and runs integration tests
 - **No forwarding** - TCP forwarding, tunneling, agent forwarding, X11 - all disabled
 - **Path sandboxing** - all file operations resolve and validate paths stay within `/work`
 
+## Built on Lockbox
+
+| Image | Description |
+| ----- | ----------- |
+| [psyb0t/mediaproc](https://github.com/psyb0t/docker-mediaproc) | FFmpeg, Sox, ImageMagick, 2200+ fonts - media processing over SSH |
+
 ## License
 
 This project is licensed under [WTFPL](LICENSE) - Do What The Fuck You Want To Public License.
