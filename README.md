@@ -61,28 +61,6 @@ docker run -d \
 ssh -p 2222 myapp@localhost "ffmpeg -version"
 ```
 
-### docker run
-
-```bash
-docker pull psyb0t/lockbox
-
-cat ~/.ssh/id_rsa.pub > authorized_keys
-mkdir -p work host_keys
-
-docker run -d \
-  --name lockbox \
-  --restart unless-stopped \
-  -p 2222:22 \
-  -e "LOCKBOX_UID=$(id -u)" \
-  -e "LOCKBOX_GID=$(id -g)" \
-  -v $(pwd)/authorized_keys:/etc/lockbox/authorized_keys:ro \
-  -v $(pwd)/host_keys:/etc/lockbox/host_keys \
-  -v $(pwd)/work:/work \
-  psyb0t/lockbox
-
-ssh -p 2222 lockbox@localhost "ls"
-```
-
 ## File Operations
 
 All paths are relative to `/work`. You can't escape it - traversal attempts get blocked, absolute paths get remapped under `/work`.
