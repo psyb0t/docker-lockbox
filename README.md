@@ -167,6 +167,38 @@ make test    # builds test image and runs integration tests
 - **No forwarding** - TCP forwarding, tunneling, agent forwarding, X11 - all disabled
 - **Path sandboxing** - all file operations resolve and validate paths stay within `/work`
 
+## Installer Generator
+
+If you're building a downstream image, `create_installer.sh` generates a complete `install.sh` for your project from a YAML config. Grab it and feed it your config:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/psyb0t/docker-lockbox/main/create_installer.sh | bash -s config.yml > install.sh
+```
+
+The YAML config:
+
+```yaml
+name: myapp
+image: psyb0t/myapp
+repo: psyb0t/docker-myapp
+
+volumes:
+  - flag: -m
+    env: MODELS_DIR
+    mount: /models:ro
+    default: ./models
+    description: Models directory
+```
+
+| Field | Description |
+| ----- | ----------- |
+| `name` | CLI command name, home dir name (`~/.myapp/`), compose service name |
+| `image` | Docker image to pull |
+| `repo` | GitHub repo for `curl \| bash` upgrades |
+| `volumes` | Extra volumes with CLI flags for runtime configuration |
+
+The generated `install.sh` gives users a one-liner install (`curl | sudo bash`) that sets up `~/.myapp/` with docker-compose, authorized_keys, host_keys, work dir, and a CLI wrapper with `start`, `stop`, `upgrade`, `uninstall`, `status`, and `logs` commands. Resource limits (`-c` cpus, `-r` memory, `-s` swap) are always available - defaults to unlimited if not specified.
+
 ## Built on Lockbox
 
 | Image | Description |
