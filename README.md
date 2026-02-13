@@ -184,7 +184,7 @@ Users then connect with `ssh myapp@host` instead of `ssh lockbox@host`.
 If you're building a downstream image, `create_installer.sh` generates a complete `install.sh` for your project from a YAML config. Grab it and feed it your config:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/psyb0t/docker-lockbox/main/create_installer.sh | bash -s config.yml > install.sh
+curl -fsSL https://raw.githubusercontent.com/psyb0t/docker-lockbox/main/create_installer.sh | bash -s installer.yml > install.sh
 ```
 
 The YAML config:
