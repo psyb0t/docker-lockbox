@@ -4,8 +4,8 @@ set -e
 CONFIG="${1:?Usage: $0 <config.yml>}"
 
 if [ ! -f "$CONFIG" ]; then
-    echo "Error: $CONFIG not found" >&2
-    exit 1
+	echo "Error: $CONFIG not found" >&2
+	exit 1
 fi
 
 # ── Parse YAML ─────────────────────────────────────────────
@@ -27,35 +27,96 @@ in_vol=false
 started=false
 
 while IFS= read -r line; do
-    [[ "$line" =~ ^volumes: ]] && { in_vol=true; continue; }
-    $in_vol || continue
-    [[ "$line" =~ ^[a-z] ]] && break
+	[[ "$line" =~ ^volumes: ]] && {
+		in_vol=true
+		continue
+	}
+	$in_vol || continue
+	[[ "$line" =~ ^[a-z] ]] && break
 
-    if [[ "$line" =~ ^[[:space:]]*- ]]; then
-        $started && vc=$((vc + 1))
-        started=true
-    fi
+	if [[ "$line" =~ ^[[:space:]]*- ]]; then
+		$started && vc=$((vc + 1))
+		started=true
+	fi
 
-    [[ "$line" =~ flag:[[:space:]]*(.*) ]]        && { vflag[$vc]="${BASH_REMATCH[1]}"; continue; }
-    [[ "$line" =~ env:[[:space:]]*(.*) ]]         && { venv[$vc]="${BASH_REMATCH[1]}"; continue; }
-    [[ "$line" =~ mount:[[:space:]]*(.*) ]]       && { vmount[$vc]="${BASH_REMATCH[1]}"; continue; }
-    [[ "$line" =~ default:[[:space:]]*(.*) ]]     && { vdefault[$vc]="${BASH_REMATCH[1]}"; continue; }
-    [[ "$line" =~ description:[[:space:]]*(.*) ]] && { vdesc[$vc]="${BASH_REMATCH[1]}"; continue; }
-done < "$CONFIG"
+	[[ "$line" =~ flag:[[:space:]]*(.*) ]] && {
+		vflag[$vc]="${BASH_REMATCH[1]}"
+		continue
+	}
+	[[ "$line" =~ env:[[:space:]]*(.*) ]] && {
+		venv[$vc]="${BASH_REMATCH[1]}"
+		continue
+	}
+	[[ "$line" =~ mount:[[:space:]]*(.*) ]] && {
+		vmount[$vc]="${BASH_REMATCH[1]}"
+		continue
+	}
+	[[ "$line" =~ default:[[:space:]]*(.*) ]] && {
+		vdefault[$vc]="${BASH_REMATCH[1]}"
+		continue
+	}
+	[[ "$line" =~ description:[[:space:]]*(.*) ]] && {
+		vdesc[$vc]="${BASH_REMATCH[1]}"
+		continue
+	}
+done <"$CONFIG"
 
 $started && vc=$((vc + 1))
+
+# Parse environment list
+declare -a eflag eenv econtainerenv edefault edesc
+ec=0
+in_env=false
+started=false
+
+while IFS= read -r line; do
+	[[ "$line" =~ ^environment: ]] && {
+		in_env=true
+		continue
+	}
+	$in_env || continue
+	[[ "$line" =~ ^[a-z] ]] && break
+
+	if [[ "$line" =~ ^[[:space:]]*- ]]; then
+		$started && ec=$((ec + 1))
+		started=true
+	fi
+
+	[[ "$line" =~ flag:[[:space:]]*(.*) ]] && {
+		eflag[$ec]="${BASH_REMATCH[1]}"
+		continue
+	}
+	[[ "$line" =~ container_env:[[:space:]]*(.*) ]] && {
+		econtainerenv[$ec]="${BASH_REMATCH[1]}"
+		continue
+	}
+	[[ "$line" =~ env:[[:space:]]*(.*) ]] && {
+		eenv[$ec]="${BASH_REMATCH[1]}"
+		continue
+	}
+	[[ "$line" =~ default:[[:space:]]*(.*) ]] && {
+		edefault[$ec]="${BASH_REMATCH[1]}"
+		continue
+	}
+	[[ "$line" =~ description:[[:space:]]*(.*) ]] && {
+		edesc[$ec]="${BASH_REMATCH[1]}"
+		continue
+	}
+done <"$CONFIG"
+
+$started && ec=$((ec + 1))
 
 # ── Generate install.sh to stdout ──────────────────────────
 
 # --- Header ---
-cat << EOF
+cat <<EOF
 #!/bin/bash
 IMAGE="$image"
 INSTALL_PATH="/usr/local/bin/$name"
 EOF
 
 # --- Sudo resolution ---
-cat << 'EOF'
+cat <<'EOF'
 
 # Resolve the real user when running under sudo
 if [ -n "$SUDO_USER" ]; then
@@ -74,8 +135,8 @@ echo ""
 echo "${upper}_HOME=\"\$REAL_HOME/.$name\""
 echo ""
 printf 'mkdir -p "$%s_HOME/work" "$%s_HOME/host_keys"' "$upper" "$upper"
-for ((i=0; i<vc; i++)); do
-    printf ' "$%s_HOME/%s"' "$upper" "${vdefault[$i]#./}"
+for ((i = 0; i < vc; i++)); do
+	printf ' "$%s_HOME/%s"' "$upper" "${vdefault[$i]#./}"
 done
 echo ""
 echo "touch \"\$${upper}_HOME/authorized_keys\""
@@ -85,8 +146,11 @@ echo ""
 echo "if [ ! -f \"\$${upper}_HOME/.env\" ]; then"
 echo "    cat > \"\$${upper}_HOME/.env\" << ENVEOF"
 echo "${upper}_PORT=2222"
-for ((i=0; i<vc; i++)); do
-    echo "${upper}_${venv[$i]}=\$${upper}_HOME/${vdefault[$i]#./}"
+for ((i = 0; i < vc; i++)); do
+	echo "${upper}_${venv[$i]}=\$${upper}_HOME/${vdefault[$i]#./}"
+done
+for ((i = 0; i < ec; i++)); do
+	echo "${upper}_${eenv[$i]}=${edefault[$i]}"
 done
 echo "${upper}_CPUS=0"
 echo "${upper}_MEMORY=0"
@@ -105,12 +169,15 @@ echo "      - \"\\\${${upper}_PORT:-2222}:22\""
 echo "    environment:"
 echo "      - LOCKBOX_UID=\${REAL_UID}"
 echo "      - LOCKBOX_GID=\${REAL_GID}"
+for ((i = 0; i < ec; i++)); do
+	echo "      - ${econtainerenv[$i]}=\\\${${upper}_${eenv[$i]}:-${edefault[$i]}}"
+done
 echo "    volumes:"
 echo "      - ./authorized_keys:/etc/lockbox/authorized_keys:ro"
 echo "      - ./host_keys:/etc/lockbox/host_keys"
 echo "      - ./work:/work"
-for ((i=0; i<vc; i++)); do
-    echo "      - \\\${${upper}_${venv[$i]}:-${vdefault[$i]}}:${vmount[$i]}"
+for ((i = 0; i < vc; i++)); do
+	echo "      - \\\${${upper}_${venv[$i]}:-${vdefault[$i]}}:${vmount[$i]}"
 done
 echo "    cpus: \\\${${upper}_CPUS:-0}"
 echo "    mem_limit: \\\${${upper}_MEMORY:-0}"
@@ -132,7 +199,7 @@ echo "}"
 
 # to_bytes + compute_memswap
 echo ""
-cat << 'EOF'
+cat <<'EOF'
 # Convert size string (e.g. 4g, 512m) to bytes
 to_bytes() {
     local val="$1"
@@ -184,16 +251,23 @@ echo "    echo \"Commands:\""
 
 # Build start flags string
 start_flags="[-d] [-p PORT]"
-for ((i=0; i<vc; i++)); do
-    uf=$(echo "${venv[$i]}" | tr '[:lower:]' '[:upper:]')
-    start_flags+=" [${vflag[$i]} ${uf}]"
+for ((i = 0; i < vc; i++)); do
+	uf=$(echo "${venv[$i]}" | tr '[:lower:]' '[:upper:]')
+	start_flags+=" [${vflag[$i]} ${uf}]"
+done
+for ((i = 0; i < ec; i++)); do
+	uf=$(echo "${eenv[$i]}" | tr '[:lower:]' '[:upper:]')
+	start_flags+=" [${eflag[$i]} ${uf}]"
 done
 start_flags+=" [-c CPUS] [-r MEMORY] [-s SWAP]"
 
 echo "    echo \"  start $start_flags\""
 echo "    echo \"                        Start $name (-d for detached)\""
-for ((i=0; i<vc; i++)); do
-    echo "    echo \"                        ${vflag[$i]}  ${vdesc[$i]}\""
+for ((i = 0; i < vc; i++)); do
+	echo "    echo \"                        ${vflag[$i]}  ${vdesc[$i]}\""
+done
+for ((i = 0; i < ec; i++)); do
+	echo "    echo \"                        ${eflag[$i]}  ${edesc[$i]}\""
 done
 echo "    echo \"                        -c  CPU limit (e.g. 4, 0.5) - 0 = unlimited\""
 echo "    echo \"                        -r  RAM limit (e.g. 4g, 512m) - 0 = unlimited\""
@@ -217,8 +291,11 @@ echo "        while [ \$# -gt 0 ]; do"
 echo "            case \"\$1\" in"
 echo "                -d) DETACHED=true ;;"
 echo "                -p) shift; sed -i \"s/^${upper}_PORT=.*/${upper}_PORT=\$1/\" \"\$ENV_FILE\" ;;"
-for ((i=0; i<vc; i++)); do
-    echo "                ${vflag[$i]}) shift; sed -i \"s|^${upper}_${venv[$i]}=.*|${upper}_${venv[$i]}=\$1|\" \"\$ENV_FILE\" ;;"
+for ((i = 0; i < vc; i++)); do
+	echo "                ${vflag[$i]}) shift; sed -i \"s|^${upper}_${venv[$i]}=.*|${upper}_${venv[$i]}=\$1|\" \"\$ENV_FILE\" ;;"
+done
+for ((i = 0; i < ec; i++)); do
+	echo "                ${eflag[$i]}) shift; sed -i \"s|^${upper}_${eenv[$i]}=.*|${upper}_${eenv[$i]}=\$1|\" \"\$ENV_FILE\" ;;"
 done
 echo "                -c) shift; sed -i \"s/^${upper}_CPUS=.*/${upper}_CPUS=\$1/\" \"\$ENV_FILE\" ;;"
 echo "                -r) shift; sed -i \"s/^${upper}_MEMORY=.*/${upper}_MEMORY=\$1/\" \"\$ENV_FILE\" ;;"
@@ -332,8 +409,8 @@ echo "echo \"\""
 echo "echo \"  Command:         \$INSTALL_PATH\""
 echo "echo \"  Authorized keys: \$${upper}_HOME/authorized_keys\""
 echo "echo \"  Work directory:  \$${upper}_HOME/work\""
-for ((i=0; i<vc; i++)); do
-    printf 'echo "  %-16s $%s_HOME/%s/"\n' "${vdesc[$i]}:" "$upper" "${vdefault[$i]#./}"
+for ((i = 0; i < vc; i++)); do
+	printf 'echo "  %-16s $%s_HOME/%s/"\n' "${vdesc[$i]}:" "$upper" "${vdefault[$i]#./}"
 done
 echo "echo \"\""
 echo "echo \"Add your SSH public key(s) to the authorized_keys file and run:\""

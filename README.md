@@ -195,11 +195,23 @@ image: psyb0t/myapp
 repo: psyb0t/docker-myapp
 
 volumes:
-  - flag: -m
-    env: MODELS_DIR
-    mount: /models:ro
-    default: ./models
-    description: Models directory
+  - flag: -d
+    env: DATA_DIR
+    mount: /data:ro
+    default: ./data
+    description: Data directory
+
+environment:
+  - flag: -w
+    env: WORKERS
+    container_env: APP_WORKERS
+    default: 4
+    description: Number of workers
+  - flag: --log-level
+    env: LOG_LEVEL
+    container_env: APP_LOG_LEVEL
+    default: info
+    description: Log level (debug, info, warn, error)
 ```
 
 | Field | Description |
@@ -208,8 +220,79 @@ volumes:
 | `image` | Docker image to pull |
 | `repo` | GitHub repo for `curl \| bash` upgrades |
 | `volumes` | Extra volumes with CLI flags for runtime configuration |
+| `environment` | Environment variables passed into the container |
+
+Each `volumes` entry:
+
+| Key | Description |
+| --- | ----------- |
+| `flag` | CLI flag for the start command (e.g. `-d`) |
+| `env` | Variable name in `.env` file, prefixed with uppercase app name (e.g. `MYAPP_DATA_DIR`) |
+| `mount` | Container mount path, with optional `:ro` suffix |
+| `default` | Default host path relative to app home |
+| `description` | Help text shown in CLI usage |
+
+Each `environment` entry:
+
+| Key | Description |
+| --- | ----------- |
+| `flag` | CLI flag for the start command (e.g. `-w`, `--log-level`) |
+| `env` | Variable name in `.env` file, prefixed with uppercase app name (e.g. `MYAPP_WORKERS`) |
+| `container_env` | Actual env var name inside the container (e.g. `APP_WORKERS`) |
+| `default` | Default value |
+| `description` | Help text shown in CLI usage |
+
+### What Gets Generated
 
 The generated `install.sh` gives users a one-liner install (`curl | sudo bash`) that sets up `~/.myapp/` with docker-compose, authorized_keys, host_keys, work dir, and a CLI wrapper with `start`, `stop`, `upgrade`, `uninstall`, `status`, and `logs` commands. Resource limits (`-c` cpus, `-r` memory, `-s` swap) are always available - defaults to unlimited if not specified.
+
+Using the example config above, the generated `.env`:
+
+```bash
+MYAPP_PORT=2222
+MYAPP_DATA_DIR=$MYAPP_HOME/data
+MYAPP_WORKERS=4
+MYAPP_LOG_LEVEL=info
+MYAPP_CPUS=0
+MYAPP_MEMORY=0
+MYAPP_SWAP=0
+```
+
+The generated `docker-compose.yml`:
+
+```yaml
+services:
+  myapp:
+    image: psyb0t/myapp
+    ports:
+      - "${MYAPP_PORT:-2222}:22"
+    environment:
+      - LOCKBOX_UID=${REAL_UID}
+      - LOCKBOX_GID=${REAL_GID}
+      - APP_WORKERS=${MYAPP_WORKERS:-4}
+      - APP_LOG_LEVEL=${MYAPP_LOG_LEVEL:-info}
+    volumes:
+      - ./authorized_keys:/etc/lockbox/authorized_keys:ro
+      - ./host_keys:/etc/lockbox/host_keys
+      - ./work:/work
+      - ${MYAPP_DATA_DIR:-./data}:/data:ro
+    cpus: ${MYAPP_CPUS:-0}
+    mem_limit: ${MYAPP_MEMORY:-0}
+    memswap_limit: ${MYAPP_MEMSWAP:-0}
+    restart: unless-stopped
+```
+
+The generated CLI wrapper:
+
+```bash
+myapp start -d                              # start detached
+myapp start -d -w 8 --log-level debug       # 8 workers, debug logging
+myapp stop                                  # stop
+myapp status                                # show container status
+myapp logs -f                               # follow logs
+myapp upgrade                               # pull latest image and re-install
+myapp uninstall                             # stop and remove everything
+```
 
 ## Building
 

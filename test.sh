@@ -13,87 +13,87 @@ FAILED=0
 TOTAL=0
 
 cleanup() {
-    echo ""
-    echo "Cleaning up..."
-    docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-    rm -rf "$TMPDIR"
+	echo ""
+	echo "Cleaning up..."
+	docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+	rm -rf "$TMPDIR"
 }
 
 trap cleanup EXIT
 
 fail() {
-    echo "  FAIL: $1"
-    if [ -n "$2" ]; then
-        echo "        got: $(echo "$2" | head -1)"
-    fi
-    FAILED=$((FAILED + 1))
-    TOTAL=$((TOTAL + 1))
+	echo "  FAIL: $1"
+	if [ -n "$2" ]; then
+		echo "        got: $(echo "$2" | head -1)"
+	fi
+	FAILED=$((FAILED + 1))
+	TOTAL=$((TOTAL + 1))
 }
 
 pass() {
-    echo "  PASS: $1"
-    PASSED=$((PASSED + 1))
-    TOTAL=$((TOTAL + 1))
+	echo "  PASS: $1"
+	PASSED=$((PASSED + 1))
+	TOTAL=$((TOTAL + 1))
 }
 
 ssh_cmd() {
-    ssh -p 22 \
-        -i "$KEY" \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        -o LogLevel=ERROR \
-        -o ConnectTimeout=5 \
-        "lockbox@$CONTAINER_IP" "$1" 2>&1 || true
+	ssh -p 22 \
+		-i "$KEY" \
+		-o StrictHostKeyChecking=no \
+		-o UserKnownHostsFile=/dev/null \
+		-o LogLevel=ERROR \
+		-o ConnectTimeout=5 \
+		"lockbox@$CONTAINER_IP" "$1" 2>&1 || true
 }
 
 ssh_cmd_stdin() {
-    ssh -p 22 \
-        -i "$KEY" \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        -o LogLevel=ERROR \
-        -o ConnectTimeout=5 \
-        "lockbox@$CONTAINER_IP" "$1" 2>/dev/null || true
+	ssh -p 22 \
+		-i "$KEY" \
+		-o StrictHostKeyChecking=no \
+		-o UserKnownHostsFile=/dev/null \
+		-o LogLevel=ERROR \
+		-o ConnectTimeout=5 \
+		"lockbox@$CONTAINER_IP" "$1" 2>/dev/null || true
 }
 
 # run_test <test_name> <ssh_command> <grep_pattern> [case_insensitive]
 run_test() {
-    local name="$1"
-    local cmd="$2"
-    local pattern="$3"
-    local case_insensitive="${4:-}"
+	local name="$1"
+	local cmd="$2"
+	local pattern="$3"
+	local case_insensitive="${4:-}"
 
-    local output
-    output=$(ssh_cmd "$cmd")
+	local output
+	output=$(ssh_cmd "$cmd")
 
-    local grep_flags="-q"
-    if [ "$case_insensitive" = "i" ]; then
-        grep_flags="-qi"
-    fi
+	local grep_flags="-q"
+	if [ "$case_insensitive" = "i" ]; then
+		grep_flags="-qi"
+	fi
 
-    if echo "$output" | grep $grep_flags "$pattern"; then
-        pass "$name"
-        return
-    fi
+	if echo "$output" | grep $grep_flags "$pattern"; then
+		pass "$name"
+		return
+	fi
 
-    fail "$name" "$output"
+	fail "$name" "$output"
 }
 
 # run_test_negative <test_name> <ssh_command> <grep_pattern_that_should_NOT_match>
 run_test_negative() {
-    local name="$1"
-    local cmd="$2"
-    local pattern="$3"
+	local name="$1"
+	local cmd="$2"
+	local pattern="$3"
 
-    local output
-    output=$(ssh_cmd "$cmd")
+	local output
+	output=$(ssh_cmd "$cmd")
 
-    if echo "$output" | grep -q "$pattern"; then
-        fail "$name" "$output"
-        return
-    fi
+	if echo "$output" | grep -q "$pattern"; then
+		fail "$name" "$output"
+		return
+	fi
 
-    pass "$name"
+	pass "$name"
 }
 
 echo "=== Building test image ==="
@@ -107,10 +107,10 @@ cp "$KEY.pub" "$AUTHKEYS"
 echo ""
 echo "=== Starting container ==="
 docker run -d \
-    --name "$CONTAINER" \
-    -e "LOCKBOX_UID=$(id -u)" \
-    -e "LOCKBOX_GID=$(id -g)" \
-    "$IMAGE" >/dev/null
+	--name "$CONTAINER" \
+	-e "LOCKBOX_UID=$(id -u)" \
+	-e "LOCKBOX_GID=$(id -g)" \
+	"$IMAGE" >/dev/null
 
 # Inject authorized_keys via docker cp (works in Docker-in-Docker environments
 # where bind mounts resolve paths on the host, not in the client container)
@@ -122,10 +122,10 @@ echo "Container IP: $CONTAINER_IP"
 
 echo "Waiting for sshd..."
 for i in $(seq 1 30); do
-    if docker exec "$CONTAINER" pgrep sshd >/dev/null 2>&1; then
-        break
-    fi
-    sleep 0.5
+	if docker exec "$CONTAINER" pgrep sshd >/dev/null 2>&1; then
+		break
+	fi
+	sleep 0.5
 done
 
 # Give sshd a moment to be ready for connections
@@ -143,18 +143,18 @@ echo ""
 echo "=== Testing blocked commands ==="
 
 #                  name                       command                    pattern
-run_test           "cat blocked"              "cat /etc/passwd"          "not allowed"
-run_test           "bash blocked"             "bash -c 'echo pwned'"     "not allowed"
-run_test           "empty command shows usage" ""                        "Usage"
+run_test "cat blocked" "cat /etc/passwd" "not allowed"
+run_test "bash blocked" "bash -c 'echo pwned'" "not allowed"
+run_test "empty command shows usage" "" "Usage"
 
 echo ""
 echo "=== Testing command injection ==="
 
 #                       name                   command                                    bad_pattern
-run_test_negative       "&& injection blocked" "ls && cat /etc/passwd"                     "root:"
-run_test_negative       "; injection blocked"  "ls; cat /etc/passwd"                       "root:"
-run_test_negative       "| injection blocked"  "ls | cat /etc/passwd"                      "root:"
-run_test_negative       "\$() injection blocked" 'ls $(cat /etc/passwd)'                   "root:"
+run_test_negative "&& injection blocked" "ls && cat /etc/passwd" "root:"
+run_test_negative "; injection blocked" "ls; cat /etc/passwd" "root:"
+run_test_negative "| injection blocked" "ls | cat /etc/passwd" "root:"
+run_test_negative "\$() injection blocked" 'ls $(cat /etc/passwd)' "root:"
 
 echo ""
 echo "=== Testing file operations ==="
@@ -243,19 +243,19 @@ mkdir -p "$HOST_KEYS_DIR"
 CONTAINER2="lockbox-hostkey-test-$$"
 
 docker run -d \
-    --name "$CONTAINER2" \
-    -e "LOCKBOX_UID=$(id -u)" \
-    -e "LOCKBOX_GID=$(id -g)" \
-    -v "$HOST_KEYS_DIR:/etc/lockbox/host_keys" \
-    "$IMAGE" >/dev/null
+	--name "$CONTAINER2" \
+	-e "LOCKBOX_UID=$(id -u)" \
+	-e "LOCKBOX_GID=$(id -g)" \
+	-v "$HOST_KEYS_DIR:/etc/lockbox/host_keys" \
+	"$IMAGE" >/dev/null
 
 docker cp "$AUTHKEYS" "$CONTAINER2:/etc/lockbox/authorized_keys"
 docker exec "$CONTAINER2" chmod 644 /etc/lockbox/authorized_keys
 
 # Wait for sshd
 for i in $(seq 1 30); do
-    if docker exec "$CONTAINER2" pgrep sshd >/dev/null 2>&1; then break; fi
-    sleep 0.5
+	if docker exec "$CONTAINER2" pgrep sshd >/dev/null 2>&1; then break; fi
+	sleep 0.5
 done
 sleep 1
 
@@ -264,9 +264,9 @@ FP1=$(docker exec "$CONTAINER2" ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 # Verify keys were copied to mounted dir
 if ls "$HOST_KEYS_DIR"/ssh_host_* >/dev/null 2>&1; then
-    pass "host keys saved to volume"
+	pass "host keys saved to volume"
 else
-    fail "host keys saved to volume" "no keys found in $HOST_KEYS_DIR"
+	fail "host keys saved to volume" "no keys found in $HOST_KEYS_DIR"
 fi
 
 # Destroy and recreate
@@ -274,27 +274,147 @@ docker rm -f "$CONTAINER2" >/dev/null 2>&1
 
 CONTAINER3="lockbox-hostkey-test2-$$"
 docker run -d \
-    --name "$CONTAINER3" \
-    -e "LOCKBOX_UID=$(id -u)" \
-    -e "LOCKBOX_GID=$(id -g)" \
-    -v "$HOST_KEYS_DIR:/etc/lockbox/host_keys" \
-    "$IMAGE" >/dev/null
+	--name "$CONTAINER3" \
+	-e "LOCKBOX_UID=$(id -u)" \
+	-e "LOCKBOX_GID=$(id -g)" \
+	-v "$HOST_KEYS_DIR:/etc/lockbox/host_keys" \
+	"$IMAGE" >/dev/null
 
 for i in $(seq 1 30); do
-    if docker exec "$CONTAINER3" pgrep sshd >/dev/null 2>&1; then break; fi
-    sleep 0.5
+	if docker exec "$CONTAINER3" pgrep sshd >/dev/null 2>&1; then break; fi
+	sleep 0.5
 done
 sleep 1
 
 FP2=$(docker exec "$CONTAINER3" ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | awk '{print $2}')
 
 if [ "$FP1" = "$FP2" ] && [ -n "$FP1" ]; then
-    pass "host keys persist across recreates"
+	pass "host keys persist across recreates"
 else
-    fail "host keys persist across recreates" "fp1=$FP1 fp2=$FP2"
+	fail "host keys persist across recreates" "fp1=$FP1 fp2=$FP2"
 fi
 
 docker rm -f "$CONTAINER2" "$CONTAINER3" >/dev/null 2>&1 || true
+
+echo ""
+echo "=== Testing create_installer.sh environment support ==="
+
+# Create a test YAML config with both volumes and environment
+INSTALLER_CONFIG="$TMPDIR/test-config.yml"
+INSTALLER_OUTPUT="$TMPDIR/test-install.sh"
+
+cat >"$INSTALLER_CONFIG" <<'YAMLEOF'
+name: testapp
+image: psyb0t/testapp
+repo: psyb0t/docker-testapp
+
+volumes:
+  - flag: -d
+    env: DATA_DIR
+    mount: /data
+    default: ./data
+    description: Data directory
+
+environment:
+  - flag: -g
+    env: DEVICE
+    container_env: APP_DEVICE
+    default: cpu
+    description: Device selection
+  - flag: --gpus
+    env: GPUS
+    container_env: NVIDIA_VISIBLE_DEVICES
+    default: all
+    description: GPUs to expose
+YAMLEOF
+
+"$SCRIPT_DIR/create_installer.sh" "$INSTALLER_CONFIG" >"$INSTALLER_OUTPUT" 2>&1
+
+# .env has environment defaults with correct env names
+if grep -q "TESTAPP_DEVICE=cpu" "$INSTALLER_OUTPUT"; then
+	pass "env: DEVICE mapped to TESTAPP_DEVICE in .env"
+else
+	fail "env: DEVICE mapped to TESTAPP_DEVICE in .env" "$(grep DEVICE "$INSTALLER_OUTPUT" | head -3)"
+fi
+
+if grep -q "TESTAPP_GPUS=all" "$INSTALLER_OUTPUT"; then
+	pass "env: GPUS mapped to TESTAPP_GPUS in .env"
+else
+	fail "env: GPUS mapped to TESTAPP_GPUS in .env" "$(grep GPUS "$INSTALLER_OUTPUT" | head -3)"
+fi
+
+# docker-compose has container_env mapped to .env vars
+if grep -q 'APP_DEVICE=.*TESTAPP_DEVICE' "$INSTALLER_OUTPUT"; then
+	pass "container_env APP_DEVICE in docker-compose"
+else
+	fail "container_env APP_DEVICE in docker-compose" "$(grep APP_DEVICE "$INSTALLER_OUTPUT" | head -3)"
+fi
+
+if grep -q 'NVIDIA_VISIBLE_DEVICES=.*TESTAPP_GPUS' "$INSTALLER_OUTPUT"; then
+	pass "container_env NVIDIA_VISIBLE_DEVICES in docker-compose"
+else
+	fail "container_env NVIDIA_VISIBLE_DEVICES in docker-compose" "$(grep NVIDIA "$INSTALLER_OUTPUT" | head -3)"
+fi
+
+# CLI help contains environment flags
+if grep -q '\-g' "$INSTALLER_OUTPUT" && grep -q 'Device selection' "$INSTALLER_OUTPUT"; then
+	pass "CLI help shows -g flag with description"
+else
+	fail "CLI help shows -g flag with description"
+fi
+
+if grep -q '\-\-gpus' "$INSTALLER_OUTPUT" && grep -q 'GPUs to expose' "$INSTALLER_OUTPUT"; then
+	pass "CLI help shows --gpus flag with description"
+else
+	fail "CLI help shows --gpus flag with description"
+fi
+
+# start command handles environment flags
+if grep -q 'TESTAPP_DEVICE=\$1' "$INSTALLER_OUTPUT"; then
+	pass "start -g updates TESTAPP_DEVICE in .env"
+else
+	fail "start -g updates TESTAPP_DEVICE in .env" "$(grep -n 'DEVICE' "$INSTALLER_OUTPUT" | head -5)"
+fi
+
+if grep -q 'TESTAPP_GPUS=\$1' "$INSTALLER_OUTPUT"; then
+	pass "start --gpus updates TESTAPP_GPUS in .env"
+else
+	fail "start --gpus updates TESTAPP_GPUS in .env" "$(grep -n 'GPUS' "$INSTALLER_OUTPUT" | head -5)"
+fi
+
+# Volumes still work alongside environment
+if grep -q 'TESTAPP_DATA_DIR=' "$INSTALLER_OUTPUT"; then
+	pass "volumes still work with environment present"
+else
+	fail "volumes still work with environment present"
+fi
+
+# No environment section without environment config
+NOENV_CONFIG="$TMPDIR/noenv-config.yml"
+NOENV_OUTPUT="$TMPDIR/noenv-install.sh"
+
+cat >"$NOENV_CONFIG" <<'YAMLEOF'
+name: simpleapp
+image: psyb0t/simpleapp
+repo: psyb0t/docker-simpleapp
+
+volumes:
+  - flag: -d
+    env: DATA_DIR
+    mount: /data
+    default: ./data
+    description: Data directory
+YAMLEOF
+
+"$SCRIPT_DIR/create_installer.sh" "$NOENV_CONFIG" >"$NOENV_OUTPUT" 2>&1
+
+# docker-compose environment should only have LOCKBOX_UID/GID, no extra env vars
+env_lines=$(grep -c '^\s*- [A-Z].*=.*\$' "$NOENV_OUTPUT" 2>/dev/null || echo "0")
+if [ "$env_lines" -le 2 ]; then
+	pass "no extra env vars without environment config"
+else
+	fail "no extra env vars without environment config" "found $env_lines env lines"
+fi
 
 echo ""
 echo "================================"
@@ -302,5 +422,5 @@ echo "Results: $PASSED passed, $FAILED failed, $TOTAL total"
 echo "================================"
 
 if [ "$FAILED" -gt 0 ]; then
-    exit 1
+	exit 1
 fi
