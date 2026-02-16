@@ -3,10 +3,9 @@ import grp
 import json
 import os
 import pwd
+import shlex
 import stat
 import sys
-import shlex
-import time
 
 os.umask(0o002)
 
@@ -35,7 +34,15 @@ def load_allowed():
 
 ALLOWED = load_allowed()
 
-BUILTINS = {"ls", "get", "put", "rm", "rmdir", "rrmdir", "mkdir"}
+BUILTINS = {
+    "list-files",
+    "get",
+    "put",
+    "remove-file",
+    "remove-dir",
+    "remove-dir-recursive",
+    "create-dir",
+}
 
 ALL_COMMANDS = sorted(list(ALLOWED.keys()) + list(BUILTINS))
 
@@ -89,15 +96,6 @@ def group_name(gid):
         return str(gid)
 
 
-def format_time(mtime):
-    t = time.localtime(mtime)
-    now = time.localtime()
-    if t.tm_year == now.tm_year:
-        return time.strftime("%b %e %H:%M", t)
-
-    return time.strftime("%b %e  %Y", t)
-
-
 def file_info_json(path):
     st = os.stat(path)
     is_dir = stat.S_ISDIR(st.st_mode)
@@ -113,22 +111,7 @@ def file_info_json(path):
     }
 
 
-def file_info_text(path):
-    st = os.stat(path)
-    is_dir = stat.S_ISDIR(st.st_mode)
-    kind = "d" if is_dir else "-"
-    mode = format_mode(st.st_mode)
-    owner = owner_name(st.st_uid)
-    group = group_name(st.st_gid)
-    mtime = format_time(st.st_mtime)
-    name = os.path.basename(path)
-    if is_dir:
-        name += "/"
-
-    return f"{kind}{mode} {st.st_nlink:>3} {owner:<8} {group:<8} {st.st_size:>8} {mtime} {name}"
-
-
-def cmd_ls(args):
+def cmd_list_files(args):
     as_json = False
     paths = []
     for arg in args:
@@ -148,7 +131,7 @@ def cmd_ls(args):
         if as_json:
             sys.stdout.write(json.dumps([file_info_json(target)]) + "\n")
             return
-        sys.stdout.write(file_info_text(target) + "\n")
+        sys.stdout.write(os.path.basename(target) + "\n")
         return
 
     try:
@@ -164,7 +147,10 @@ def cmd_ls(args):
         return
 
     for entry in entries:
-        sys.stdout.write(file_info_text(os.path.join(target, entry)) + "\n")
+        if os.path.isdir(os.path.join(target, entry)):
+            sys.stdout.write(entry + "/\n")
+            continue
+        sys.stdout.write(entry + "\n")
 
 
 def cmd_get(args):
@@ -206,9 +192,9 @@ def cmd_put(args):
             f.write(chunk)
 
 
-def cmd_rm(args):
+def cmd_remove_file(args):
     if not args:
-        die("usage: rm <path>")
+        die("usage: remove-file <path>")
 
     target = safe_path(args[0])
     if not target:
@@ -226,9 +212,9 @@ def cmd_rm(args):
     os.remove(target)
 
 
-def cmd_rmdir(args):
+def cmd_remove_dir(args):
     if not args:
-        die("usage: rmdir <path>")
+        die("usage: remove-dir <path>")
 
     target = safe_path(args[0])
     if not target:
@@ -246,9 +232,9 @@ def cmd_rmdir(args):
     os.rmdir(target)
 
 
-def cmd_rrmdir(args):
+def cmd_remove_dir_recursive(args):
     if not args:
-        die("usage: rrmdir <path>")
+        die("usage: remove-dir-recursive <path>")
 
     target = safe_path(args[0])
     if not target:
@@ -261,12 +247,13 @@ def cmd_rrmdir(args):
         die("not a directory")
 
     import shutil
+
     shutil.rmtree(target)
 
 
-def cmd_mkdir(args):
+def cmd_create_dir(args):
     if not args:
-        die("usage: mkdir <path>")
+        die("usage: create-dir <path>")
 
     target = safe_path(args[0])
     if not target:
@@ -300,13 +287,13 @@ def main():
     args = parts[1:]
 
     builtins = {
-        "ls": cmd_ls,
+        "list-files": cmd_list_files,
         "get": cmd_get,
         "put": cmd_put,
-        "rm": cmd_rm,
-        "rmdir": cmd_rmdir,
-        "rrmdir": cmd_rrmdir,
-        "mkdir": cmd_mkdir,
+        "remove-file": cmd_remove_file,
+        "remove-dir": cmd_remove_dir,
+        "remove-dir-recursive": cmd_remove_dir_recursive,
+        "create-dir": cmd_create_dir,
     }
 
     if binary in builtins:

@@ -26,7 +26,7 @@ Skip the HTTP API wrapper. Any CLI tool instantly becomes a secure, remotely acc
 ## What You Get
 
 - **SSH key auth only** - no passwords, no keyboard-interactive
-- **File ops over SSH** - `put`, `get`, `ls`, `rm`, `rmdir`, `rrmdir`, `mkdir` - all locked to `/work`
+- **File ops over SSH** - `put`, `get`, `list-files`, `remove-file`, `remove-dir`, `remove-dir-recursive`, `create-dir` - all locked to `/work`
 - **No shell access** - Python wrapper validates every command, no shell involved at any point
 - **No injection** - `&&`, `;`, `|`, `$()` are just literal arguments. No shell means shell metacharacters are meaningless
 - **No forwarding** - TCP forwarding, tunneling, agent forwarding, X11 - all disabled
@@ -93,15 +93,15 @@ ssh -p 2222 myapp@localhost "ffmpeg -version"
 
 All paths are relative to `/work`. You can't escape it - traversal attempts get blocked, absolute paths get remapped under `/work`.
 
-| Command  | Description                                       |
-| -------- | ------------------------------------------------- |
-| `ls`     | List `/work` or a subdirectory (`--json` for JSON output) |
-| `put`    | Upload file from stdin                            |
-| `get`    | Download file to stdout                           |
-| `rm`     | Delete a file (not directories)                   |
-| `mkdir`  | Create directory (recursive)                      |
-| `rmdir`  | Remove empty directory                            |
-| `rrmdir` | Remove directory and everything in it recursively |
+| Command                | Description                                       |
+| ---------------------- | ------------------------------------------------- |
+| `list-files`           | List `/work` or a subdirectory (`--json` for JSON output) |
+| `put`                  | Upload file from stdin                            |
+| `get`                  | Download file to stdout                           |
+| `remove-file`          | Delete a file (not directories)                   |
+| `create-dir`           | Create directory (recursive)                      |
+| `remove-dir`           | Remove empty directory                            |
+| `remove-dir-recursive` | Remove directory and everything in it recursively |
 
 ### Examples
 
@@ -113,23 +113,23 @@ ssh lockbox@host "put input.txt" < input.txt
 ssh lockbox@host "get output.txt" > output.txt
 
 # List files
-ssh lockbox@host "ls"
-ssh lockbox@host "ls subdir"
+ssh lockbox@host "list-files"
+ssh lockbox@host "list-files subdir"
 
 # List files as JSON
-ssh lockbox@host "ls --json"
+ssh lockbox@host "list-files --json"
 
 # Create a directory
-ssh lockbox@host "mkdir project1"
+ssh lockbox@host "create-dir project1"
 
 # Delete a file
-ssh lockbox@host "rm input.txt"
+ssh lockbox@host "remove-file input.txt"
 
 # Delete an empty directory
-ssh lockbox@host "rmdir project1"
+ssh lockbox@host "remove-dir project1"
 
 # Nuke a directory and everything in it
-ssh lockbox@host "rrmdir project1"
+ssh lockbox@host "remove-dir-recursive project1"
 ```
 
 ## Configuration

@@ -151,10 +151,10 @@ echo ""
 echo "=== Testing command injection ==="
 
 #                       name                   command                                    bad_pattern
-run_test_negative "&& injection blocked" "ls && cat /etc/passwd" "root:"
-run_test_negative "; injection blocked" "ls; cat /etc/passwd" "root:"
-run_test_negative "| injection blocked" "ls | cat /etc/passwd" "root:"
-run_test_negative "\$() injection blocked" 'ls $(cat /etc/passwd)' "root:"
+run_test_negative "&& injection blocked" "list-files && cat /etc/passwd" "root:"
+run_test_negative "; injection blocked" "list-files; cat /etc/passwd" "root:"
+run_test_negative "| injection blocked" "list-files | cat /etc/passwd" "root:"
+run_test_negative "\$() injection blocked" 'list-files $(cat /etc/passwd)' "root:"
 
 echo ""
 echo "=== Testing file operations ==="
@@ -163,71 +163,69 @@ echo "=== Testing file operations ==="
 echo "hello lockbox" | ssh_cmd_stdin "put testfile.txt"
 run_test "put file" "get testfile.txt" "hello lockbox"
 
-# ls shows the file (default ls -alph style)
-run_test "ls shows file" "ls" "testfile.txt"
-run_test "ls shows permissions" "ls" "rw-"
-run_test "ls shows owner" "ls" "lockbox"
+# list-files shows the file (plain filename output)
+run_test "list-files shows file" "list-files" "testfile.txt"
 
-# ls --json output
-run_test "ls --json valid" "ls --json" '"name"'
-run_test "ls --json has size" "ls --json" '"size"'
-run_test "ls --json has mode" "ls --json" '"mode"'
-run_test "ls --json has isDir" "ls --json" '"isDir"'
-run_test "ls --json shows file" "ls --json" '"testfile.txt"'
+# list-files --json output
+run_test "list-files --json valid" "list-files --json" '"name"'
+run_test "list-files --json has size" "list-files --json" '"size"'
+run_test "list-files --json has mode" "list-files --json" '"mode"'
+run_test "list-files --json has isDir" "list-files --json" '"isDir"'
+run_test "list-files --json shows file" "list-files --json" '"testfile.txt"'
 
-# ls default should not have . or ..
-run_test_negative "ls no dot" "ls" '^\.\/$'
-run_test_negative "ls no dotdot" "ls" '^\.\.\/$'
+# list-files default should not have . or ..
+run_test_negative "list-files no dot" "list-files" '^\.\/$'
+run_test_negative "list-files no dotdot" "list-files" '^\.\.\/$'
 
-# mkdir
-ssh_cmd "mkdir subdir"
-run_test "mkdir creates dir" "ls" "subdir"
+# create-dir
+ssh_cmd "create-dir subdir"
+run_test "create-dir creates dir" "list-files" "subdir"
 
 # put into subdir
 echo "nested content" | ssh_cmd_stdin "put subdir/nested.txt"
 run_test "put in subdir" "get subdir/nested.txt" "nested content"
 
-# ls subdir
-run_test "ls subdir" "ls subdir" "nested.txt"
-run_test "ls --json subdir" "ls --json subdir" '"nested.txt"'
+# list-files subdir
+run_test "list-files subdir" "list-files subdir" "nested.txt"
+run_test "list-files --json subdir" "list-files --json subdir" '"nested.txt"'
 
-# rm
-ssh_cmd "rm testfile.txt"
-run_test_negative "rm deletes file" "ls" "testfile.txt"
+# remove-file
+ssh_cmd "remove-file testfile.txt"
+run_test_negative "remove-file deletes file" "list-files" "testfile.txt"
 
-# rm dir blocked
-run_test "rm dir blocked" "rm subdir" "is a directory"
+# remove-file dir blocked
+run_test "remove-file dir blocked" "remove-file subdir" "is a directory"
 
-# rmdir on non-empty dir blocked
-run_test "rmdir non-empty blocked" "rmdir subdir" "directory not empty"
+# remove-dir on non-empty dir blocked
+run_test "remove-dir non-empty blocked" "remove-dir subdir" "directory not empty"
 
-# rmdir on file blocked
-run_test "rmdir on file blocked" "rmdir subdir/nested.txt" "not a directory"
+# remove-dir on file blocked
+run_test "remove-dir on file blocked" "remove-dir subdir/nested.txt" "not a directory"
 
-# rrmdir nukes the whole thing
-ssh_cmd "rrmdir subdir"
-run_test_negative "rrmdir removes dir" "ls" "subdir"
+# remove-dir-recursive nukes the whole thing
+ssh_cmd "remove-dir-recursive subdir"
+run_test_negative "remove-dir-recursive removes dir" "list-files" "subdir"
 
-# rmdir empty dir works
-ssh_cmd "mkdir emptydir"
-run_test "mkdir emptydir" "ls" "emptydir"
-ssh_cmd "rmdir emptydir"
-run_test_negative "rmdir removes empty dir" "ls" "emptydir"
+# remove-dir empty dir works
+ssh_cmd "create-dir emptydir"
+run_test "create-dir emptydir" "list-files" "emptydir"
+ssh_cmd "remove-dir emptydir"
+run_test_negative "remove-dir removes empty dir" "list-files" "emptydir"
 
-# rrmdir /work blocked
-run_test "rrmdir /work blocked" "rrmdir /" "cannot remove /work"
-run_test "rmdir /work blocked" "rmdir /" "cannot remove /work"
+# remove-dir-recursive /work blocked
+run_test "remove-dir-recursive /work blocked" "remove-dir-recursive /" "cannot remove /work"
+run_test "remove-dir /work blocked" "remove-dir /" "cannot remove /work"
 
-# rmdir/rrmdir traversal blocked
-run_test "rmdir traversal blocked" "rmdir ../../etc" "path outside /work"
-run_test "rrmdir traversal blocked" "rrmdir ../../etc" "path outside /work"
+# remove-dir/remove-dir-recursive traversal blocked
+run_test "remove-dir traversal blocked" "remove-dir ../../etc" "path outside /work"
+run_test "remove-dir-recursive traversal blocked" "remove-dir-recursive ../../etc" "path outside /work"
 
 # path traversal blocked
 run_test "get traversal blocked" "get ../../etc/passwd" "path outside /work"
 run_test "put traversal blocked" "put ../../etc/evil" "path outside /work"
-run_test "ls traversal blocked" "ls ../../etc" "path outside /work"
-run_test "rm traversal blocked" "rm ../../etc/passwd" "path outside /work"
-run_test "mkdir traversal blocked" "mkdir ../../etc/pwned" "path outside /work"
+run_test "list-files traversal blocked" "list-files ../../etc" "path outside /work"
+run_test "remove-file traversal blocked" "remove-file ../../etc/passwd" "path outside /work"
+run_test "create-dir traversal blocked" "create-dir ../../etc/pwned" "path outside /work"
 
 # absolute paths remap to /work (so /etc/passwd becomes /work/etc/passwd)
 run_test "get abs path remapped" "get /etc/passwd" "no such file"
