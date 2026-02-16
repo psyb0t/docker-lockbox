@@ -187,7 +187,7 @@ If you're building a downstream image, `create_installer.sh` generates a complet
 curl -fsSL https://raw.githubusercontent.com/psyb0t/docker-lockbox/main/create_installer.sh | bash -s installer.yml > install.sh
 ```
 
-The YAML config:
+Example config:
 
 ```yaml
 name: myapp
@@ -244,7 +244,7 @@ Each `environment` entry:
 
 ### What Gets Generated
 
-The generated `install.sh` gives users a one-liner install (`curl | sudo bash`) that sets up `~/.myapp/` with docker-compose, authorized_keys, host_keys, work dir, and a CLI wrapper with `start`, `stop`, `upgrade`, `uninstall`, `status`, and `logs` commands. Resource limits (`-c` cpus, `-r` memory, `-s` swap) are always available - defaults to unlimited if not specified.
+The generated `install.sh` gives users a one-liner install (`curl | sudo bash`) that sets up `~/.myapp/` with docker-compose, authorized_keys, host_keys, work dir, and a CLI wrapper with `start`, `stop`, `upgrade`, `uninstall`, `status`, and `logs` commands. Resource limits (`--cpus`, `--memory`, `--swap`) are always available - defaults to unlimited if not specified.
 
 Using the example config above, the generated `.env`:
 
@@ -253,6 +253,8 @@ MYAPP_PORT=2222
 MYAPP_DATA_DIR=$MYAPP_HOME/data
 MYAPP_WORKERS=4
 MYAPP_LOG_LEVEL=info
+MYAPP_PROCESSING_UNIT=cpu
+MYAPP_GPUS=all
 MYAPP_CPUS=0
 MYAPP_MEMORY=0
 MYAPP_SWAP=0
@@ -271,6 +273,7 @@ services:
       - LOCKBOX_GID=${REAL_GID}
       - APP_WORKERS=${MYAPP_WORKERS:-4}
       - APP_LOG_LEVEL=${MYAPP_LOG_LEVEL:-info}
+      - PROCESSING_UNIT=${MYAPP_PROCESSING_UNIT:-cpu}
     volumes:
       - ./authorized_keys:/etc/lockbox/authorized_keys:ro
       - ./host_keys:/etc/lockbox/host_keys
@@ -282,16 +285,28 @@ services:
     restart: unless-stopped
 ```
 
+Every generated installer includes GPU/processing unit support. Two compose overlays are generated alongside the base `docker-compose.yml`. The CLI wrapper's `compose()` function automatically merges the right one based on `--processing-unit`:
+
+- `--processing-unit cuda` → merges `docker-compose.cuda.yml` (nvidia driver, `NVIDIA_VISIBLE_DEVICES`)
+- `--processing-unit rocm` → merges `docker-compose.rocm.yml` (AMD `/dev/kfd`, `/dev/dri`, `HIP_VISIBLE_DEVICES`)
+- `--processing-unit cpu` (default) → no overlay
+
+The `--gpus` flag controls which GPUs are exposed — maps to the vendor-specific env var in each overlay.
+
 The generated CLI wrapper:
 
 ```bash
-myapp start -d                              # start detached
-myapp start -d -w 8 --log-level debug       # 8 workers, debug logging
-myapp stop                                  # stop
-myapp status                                # show container status
-myapp logs -f                               # follow logs
-myapp upgrade                               # pull latest image and re-install
-myapp uninstall                             # stop and remove everything
+myapp start -d                                          # start detached (cpu mode)
+myapp start -d --processing-unit cuda --gpus 0          # NVIDIA GPU 0
+myapp start -d --processing-unit cuda --gpus all        # all NVIDIA GPUs
+myapp start -d --processing-unit rocm --gpus 0          # AMD GPU 0
+myapp start -d -w 8 --log-level debug                   # 8 workers, debug logging
+myapp start -d --port 3333 --cpus 4 --memory 8g         # custom port, resource limits
+myapp stop                                              # stop
+myapp status                                            # show container status
+myapp logs -f                                           # follow logs
+myapp upgrade                                           # pull latest image and re-install
+myapp uninstall                                         # stop and remove everything
 ```
 
 ## Building

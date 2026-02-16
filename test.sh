@@ -408,12 +408,149 @@ YAMLEOF
 
 "$SCRIPT_DIR/create_installer.sh" "$NOENV_CONFIG" >"$NOENV_OUTPUT" 2>&1
 
-# docker-compose environment should only have LOCKBOX_UID/GID, no extra env vars
+# docker-compose environment should only have LOCKBOX_UID/GID + PROCESSING_UNIT, no extra env vars
 env_lines=$(grep -c '^\s*- [A-Z].*=.*\$' "$NOENV_OUTPUT" 2>/dev/null || echo "0")
-if [ "$env_lines" -le 2 ]; then
+if [ "$env_lines" -le 3 ]; then
 	pass "no extra env vars without environment config"
 else
 	fail "no extra env vars without environment config" "found $env_lines env lines"
+fi
+
+# Even without environment config, processing unit support is always present
+if grep -q 'SIMPLEAPP_PROCESSING_UNIT=cpu' "$NOENV_OUTPUT"; then
+	pass "processing unit always present (no env config)"
+else
+	fail "processing unit always present (no env config)" "$(grep PROCESSING "$NOENV_OUTPUT" | head -3)"
+fi
+
+if grep -q 'docker-compose.cuda.yml' "$NOENV_OUTPUT"; then
+	pass "cuda overlay always generated (no env config)"
+else
+	fail "cuda overlay always generated (no env config)"
+fi
+
+if grep -q 'docker-compose.rocm.yml' "$NOENV_OUTPUT"; then
+	pass "rocm overlay always generated (no env config)"
+else
+	fail "rocm overlay always generated (no env config)"
+fi
+
+echo ""
+echo "=== Testing create_installer.sh processing unit support ==="
+
+GPU_CONFIG="$TMPDIR/gpu-config.yml"
+GPU_OUTPUT="$TMPDIR/gpu-install.sh"
+
+cat >"$GPU_CONFIG" <<'YAMLEOF'
+name: gpuapp
+image: psyb0t/gpuapp
+repo: psyb0t/docker-gpuapp
+
+volumes:
+  - flag: -d
+    env: DATA_DIR
+    mount: /data
+    default: ./data
+    description: Data directory
+YAMLEOF
+
+"$SCRIPT_DIR/create_installer.sh" "$GPU_CONFIG" >"$GPU_OUTPUT" 2>&1
+
+# .env has PROCESSING_UNIT and GPUS
+if grep -q "GPUAPP_PROCESSING_UNIT=cpu" "$GPU_OUTPUT"; then
+	pass "gpu: PROCESSING_UNIT default in .env"
+else
+	fail "gpu: PROCESSING_UNIT default in .env" "$(grep PROCESSING "$GPU_OUTPUT" | head -3)"
+fi
+
+if grep -q "GPUAPP_GPUS=all" "$GPU_OUTPUT"; then
+	pass "gpu: GPUS default in .env"
+else
+	fail "gpu: GPUS default in .env" "$(grep GPUS "$GPU_OUTPUT" | head -3)"
+fi
+
+# docker-compose.yml has PROCESSING_UNIT and NVIDIA_VISIBLE_DEVICES env vars
+if grep -q 'PROCESSING_UNIT=.*GPUAPP_PROCESSING_UNIT' "$GPU_OUTPUT"; then
+	pass "gpu: PROCESSING_UNIT in docker-compose env"
+else
+	fail "gpu: PROCESSING_UNIT in docker-compose env" "$(grep PROCESSING "$GPU_OUTPUT" | head -3)"
+fi
+
+# docker-compose.cuda.yml has NVIDIA_VISIBLE_DEVICES and nvidia driver
+if grep -q 'docker-compose.cuda.yml' "$GPU_OUTPUT"; then
+	pass "gpu: docker-compose.cuda.yml generated"
+else
+	fail "gpu: docker-compose.cuda.yml generated"
+fi
+
+if grep -q 'NVIDIA_VISIBLE_DEVICES=.*GPUAPP_GPUS' "$GPU_OUTPUT"; then
+	pass "gpu: NVIDIA_VISIBLE_DEVICES in cuda overlay"
+else
+	fail "gpu: NVIDIA_VISIBLE_DEVICES in cuda overlay" "$(grep NVIDIA "$GPU_OUTPUT" | head -3)"
+fi
+
+if grep -q 'driver: nvidia' "$GPU_OUTPUT"; then
+	pass "gpu: nvidia driver in cuda overlay"
+else
+	fail "gpu: nvidia driver in cuda overlay"
+fi
+
+# docker-compose.rocm.yml has HIP_VISIBLE_DEVICES and amd devices
+if grep -q 'docker-compose.rocm.yml' "$GPU_OUTPUT"; then
+	pass "gpu: docker-compose.rocm.yml generated"
+else
+	fail "gpu: docker-compose.rocm.yml generated"
+fi
+
+if grep -q 'HIP_VISIBLE_DEVICES=.*GPUAPP_GPUS' "$GPU_OUTPUT"; then
+	pass "gpu: HIP_VISIBLE_DEVICES in rocm overlay"
+else
+	fail "gpu: HIP_VISIBLE_DEVICES in rocm overlay" "$(grep HIP "$GPU_OUTPUT" | head -3)"
+fi
+
+if grep -q '/dev/kfd' "$GPU_OUTPUT"; then
+	pass "gpu: /dev/kfd in rocm overlay"
+else
+	fail "gpu: /dev/kfd in rocm overlay"
+fi
+
+# compose() has conditional cuda and rocm overlays
+if grep -q 'cuda\*.*overlay.*docker-compose.cuda.yml' "$GPU_OUTPUT"; then
+	pass "gpu: compose() has cuda conditional"
+else
+	fail "gpu: compose() has cuda conditional" "$(grep -A7 'compose()' "$GPU_OUTPUT" | head -8)"
+fi
+
+if grep -q 'rocm\*.*overlay.*docker-compose.rocm.yml' "$GPU_OUTPUT"; then
+	pass "gpu: compose() has rocm conditional"
+else
+	fail "gpu: compose() has rocm conditional" "$(grep -A7 'compose()' "$GPU_OUTPUT" | head -8)"
+fi
+
+# CLI has --processing-unit and --gpus flags
+if grep -q '\-\-processing-unit.*Processing unit' "$GPU_OUTPUT"; then
+	pass "gpu: CLI help shows --processing-unit flag"
+else
+	fail "gpu: CLI help shows --processing-unit flag"
+fi
+
+if grep -q '\-\-gpus.*GPUs to expose' "$GPU_OUTPUT"; then
+	pass "gpu: CLI help shows --gpus flag"
+else
+	fail "gpu: CLI help shows --gpus flag"
+fi
+
+# start handles --processing-unit and --gpus
+if grep -q 'GPUAPP_PROCESSING_UNIT=\$1' "$GPU_OUTPUT"; then
+	pass "gpu: start --processing-unit updates PROCESSING_UNIT"
+else
+	fail "gpu: start --processing-unit updates PROCESSING_UNIT"
+fi
+
+if grep -q 'GPUAPP_GPUS=\$1' "$GPU_OUTPUT"; then
+	pass "gpu: start --gpus updates GPUS"
+else
+	fail "gpu: start --gpus updates GPUS"
 fi
 
 echo ""

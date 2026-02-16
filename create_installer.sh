@@ -13,7 +13,6 @@ fi
 name=$(awk '/^name:/{print $2}' "$CONFIG")
 image=$(awk '/^image:/{print $2}' "$CONFIG")
 repo=$(awk '/^repo:/{print $2}' "$CONFIG")
-
 : "${name:?missing 'name' in $CONFIG}"
 : "${image:?missing 'image' in $CONFIG}"
 : "${repo:?missing 'repo' in $CONFIG}"
@@ -152,6 +151,8 @@ done
 for ((i = 0; i < ec; i++)); do
 	echo "${upper}_${eenv[$i]}=${edefault[$i]}"
 done
+echo "${upper}_PROCESSING_UNIT=cpu"
+echo "${upper}_GPUS=all"
 echo "${upper}_CPUS=0"
 echo "${upper}_MEMORY=0"
 echo "${upper}_SWAP=0"
@@ -172,6 +173,7 @@ echo "      - LOCKBOX_GID=\${REAL_GID}"
 for ((i = 0; i < ec; i++)); do
 	echo "      - ${econtainerenv[$i]}=\\\${${upper}_${eenv[$i]}:-${edefault[$i]}}"
 done
+echo "      - PROCESSING_UNIT=\\\${${upper}_PROCESSING_UNIT:-cpu}"
 echo "    volumes:"
 echo "      - ./authorized_keys:/etc/lockbox/authorized_keys:ro"
 echo "      - ./host_keys:/etc/lockbox/host_keys"
@@ -185,6 +187,35 @@ echo "    memswap_limit: \\\${${upper}_MEMSWAP:-0}"
 echo "    restart: unless-stopped"
 echo "EOF"
 
+# --- GPU compose overlays ---
+echo ""
+echo "cat > \"\$${upper}_HOME/docker-compose.cuda.yml\" << EOF"
+echo "services:"
+echo "  $name:"
+echo "    environment:"
+echo "      - NVIDIA_VISIBLE_DEVICES=\\\${${upper}_GPUS:-all}"
+echo "    deploy:"
+echo "      resources:"
+echo "        reservations:"
+echo "          devices:"
+echo "            - driver: nvidia"
+echo "              capabilities: [gpu]"
+echo "EOF"
+
+echo ""
+echo "cat > \"\$${upper}_HOME/docker-compose.rocm.yml\" << EOF"
+echo "services:"
+echo "  $name:"
+echo "    environment:"
+echo "      - HIP_VISIBLE_DEVICES=\\\${${upper}_GPUS:-all}"
+echo "    devices:"
+echo "      - /dev/kfd:/dev/kfd"
+echo "      - /dev/dri:/dev/dri"
+echo "    group_add:"
+echo "      - video"
+echo "      - render"
+echo "EOF"
+
 # --- CLI wrapper script ---
 echo ""
 echo "cat > \"\$INSTALL_PATH\" << 'SCRIPT'"
@@ -194,7 +225,13 @@ echo "${upper}_HOME=\"__${upper}_HOME__\""
 echo "ENV_FILE=\"\$${upper}_HOME/.env\""
 echo ""
 echo "compose() {"
-echo "    docker compose --env-file \"\$ENV_FILE\" -f \"\$${upper}_HOME/docker-compose.yml\" \"\$@\""
+echo "    . \"\$ENV_FILE\""
+echo "    local overlay=\"\""
+echo "    case \"\${${upper}_PROCESSING_UNIT:-cpu}\" in"
+echo "        cuda*) overlay=\"-f \$${upper}_HOME/docker-compose.cuda.yml\" ;;"
+echo "        rocm*) overlay=\"-f \$${upper}_HOME/docker-compose.rocm.yml\" ;;"
+echo "    esac"
+echo "    docker compose --env-file \"\$ENV_FILE\" -f \"\$${upper}_HOME/docker-compose.yml\" \$overlay \"\$@\""
 echo "}"
 
 # to_bytes + compute_memswap
@@ -250,7 +287,7 @@ echo "    echo \"\""
 echo "    echo \"Commands:\""
 
 # Build start flags string
-start_flags="[-d] [-p PORT]"
+start_flags="[-d] [--port PORT]"
 for ((i = 0; i < vc; i++)); do
 	uf=$(echo "${venv[$i]}" | tr '[:lower:]' '[:upper:]')
 	start_flags+=" [${vflag[$i]} ${uf}]"
@@ -259,7 +296,8 @@ for ((i = 0; i < ec; i++)); do
 	uf=$(echo "${eenv[$i]}" | tr '[:lower:]' '[:upper:]')
 	start_flags+=" [${eflag[$i]} ${uf}]"
 done
-start_flags+=" [-c CPUS] [-r MEMORY] [-s SWAP]"
+start_flags+=" [--processing-unit UNIT] [--gpus GPUS]"
+start_flags+=" [--cpus CPUS] [--memory MEMORY] [--swap SWAP]"
 
 echo "    echo \"  start $start_flags\""
 echo "    echo \"                        Start $name (-d for detached)\""
@@ -269,9 +307,11 @@ done
 for ((i = 0; i < ec; i++)); do
 	echo "    echo \"                        ${eflag[$i]}  ${edesc[$i]}\""
 done
-echo "    echo \"                        -c  CPU limit (e.g. 4, 0.5) - 0 = unlimited\""
-echo "    echo \"                        -r  RAM limit (e.g. 4g, 512m) - 0 = unlimited\""
-echo "    echo \"                        -s  Swap limit (e.g. 2g, 512m) - 0 = no swap\""
+echo "    echo \"                        --processing-unit  Processing unit (cpu, cuda, rocm)\""
+echo "    echo \"                        --gpus  GPUs to expose (all, 0, 0,1, etc.)\""
+echo "    echo \"                        --cpus  CPU limit (e.g. 4, 0.5) - 0 = unlimited\""
+echo "    echo \"                        --memory  RAM limit (e.g. 4g, 512m) - 0 = unlimited\""
+echo "    echo \"                        --swap  Swap limit (e.g. 2g, 512m) - 0 = no swap\""
 echo "    echo \"  stop                  Stop $name\""
 echo "    echo \"  upgrade               Pull latest image and restart if needed\""
 echo "    echo \"  uninstall             Stop $name and remove everything\""
@@ -290,16 +330,18 @@ echo "        DETACHED=false"
 echo "        while [ \$# -gt 0 ]; do"
 echo "            case \"\$1\" in"
 echo "                -d) DETACHED=true ;;"
-echo "                -p) shift; sed -i \"s/^${upper}_PORT=.*/${upper}_PORT=\$1/\" \"\$ENV_FILE\" ;;"
+echo "                --port) shift; sed -i \"s/^${upper}_PORT=.*/${upper}_PORT=\$1/\" \"\$ENV_FILE\" ;;"
 for ((i = 0; i < vc; i++)); do
 	echo "                ${vflag[$i]}) shift; sed -i \"s|^${upper}_${venv[$i]}=.*|${upper}_${venv[$i]}=\$1|\" \"\$ENV_FILE\" ;;"
 done
 for ((i = 0; i < ec; i++)); do
 	echo "                ${eflag[$i]}) shift; sed -i \"s|^${upper}_${eenv[$i]}=.*|${upper}_${eenv[$i]}=\$1|\" \"\$ENV_FILE\" ;;"
 done
-echo "                -c) shift; sed -i \"s/^${upper}_CPUS=.*/${upper}_CPUS=\$1/\" \"\$ENV_FILE\" ;;"
-echo "                -r) shift; sed -i \"s/^${upper}_MEMORY=.*/${upper}_MEMORY=\$1/\" \"\$ENV_FILE\" ;;"
-echo "                -s) shift; sed -i \"s/^${upper}_SWAP=.*/${upper}_SWAP=\$1/\" \"\$ENV_FILE\" ;;"
+echo "                --processing-unit) shift; sed -i \"s|^${upper}_PROCESSING_UNIT=.*|${upper}_PROCESSING_UNIT=\$1|\" \"\$ENV_FILE\" ;;"
+echo "                --gpus) shift; sed -i \"s|^${upper}_GPUS=.*|${upper}_GPUS=\$1|\" \"\$ENV_FILE\" ;;"
+echo "                --cpus) shift; sed -i \"s/^${upper}_CPUS=.*/${upper}_CPUS=\$1/\" \"\$ENV_FILE\" ;;"
+echo "                --memory) shift; sed -i \"s/^${upper}_MEMORY=.*/${upper}_MEMORY=\$1/\" \"\$ENV_FILE\" ;;"
+echo "                --swap) shift; sed -i \"s/^${upper}_SWAP=.*/${upper}_SWAP=\$1/\" \"\$ENV_FILE\" ;;"
 echo "            esac"
 echo "            shift"
 echo "        done"
