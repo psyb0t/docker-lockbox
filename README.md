@@ -26,7 +26,7 @@ Skip the HTTP API wrapper. Any CLI tool instantly becomes a secure, remotely acc
 ## What You Get
 
 - **SSH key auth only** - no passwords, no keyboard-interactive
-- **File ops over SSH** - `put`, `get`, `list-files`, `remove-file`, `remove-dir`, `remove-dir-recursive`, `create-dir` - all locked to `/work`
+- **File ops over SSH** - `put`, `get`, `list-files`, `remove-file`, `create-dir`, `remove-dir`, `remove-dir-recursive`, `move-file`, `copy-file`, `file-info`, `file-exists`, `file-hash`, `disk-usage`, `search-files`, `append-file` - all locked to `/work`
 - **No shell access** - Python wrapper validates every command, no shell involved at any point
 - **No injection** - `&&`, `;`, `|`, `$()` are just literal arguments. No shell means shell metacharacters are meaningless
 - **No forwarding** - TCP forwarding, tunneling, agent forwarding, X11 - all disabled
@@ -98,10 +98,18 @@ All paths are relative to `/work`. You can't escape it - traversal attempts get 
 | `list-files`           | List `/work` or a subdirectory (`--json` for JSON output) |
 | `put`                  | Upload file from stdin                            |
 | `get`                  | Download file to stdout                           |
+| `append-file`          | Append stdin to an existing file                  |
 | `remove-file`          | Delete a file (not directories)                   |
 | `create-dir`           | Create directory (recursive)                      |
 | `remove-dir`           | Remove empty directory                            |
 | `remove-dir-recursive` | Remove directory and everything in it recursively |
+| `move-file`            | Move/rename a file or directory within `/work`    |
+| `copy-file`            | Copy a file within `/work`                        |
+| `file-info`            | JSON metadata for a path (size, mode, owner, etc) |
+| `file-exists`          | Print `true` or `false`                           |
+| `file-hash`            | SHA-256 hex digest of a file                      |
+| `disk-usage`           | Total bytes used in `/work` or a subpath          |
+| `search-files`         | Glob pattern search (recursive) within `/work`    |
 
 ### Examples
 
@@ -130,6 +138,31 @@ ssh lockbox@host "remove-dir project1"
 
 # Nuke a directory and everything in it
 ssh lockbox@host "remove-dir-recursive project1"
+
+# Move/rename a file
+ssh lockbox@host "move-file old.txt new.txt"
+
+# Copy a file
+ssh lockbox@host "copy-file original.txt backup.txt"
+
+# Get file metadata as JSON
+ssh lockbox@host "file-info output.txt"
+
+# Check if a file exists
+ssh lockbox@host "file-exists output.txt"
+
+# Get SHA-256 hash
+ssh lockbox@host "file-hash output.txt"
+
+# Check disk usage (bytes)
+ssh lockbox@host "disk-usage"
+ssh lockbox@host "disk-usage subdir"
+
+# Search for files by glob pattern
+ssh lockbox@host "search-files **/*.txt"
+
+# Append to an existing file
+echo "more data" | ssh lockbox@host "append-file output.txt"
 ```
 
 ## Configuration

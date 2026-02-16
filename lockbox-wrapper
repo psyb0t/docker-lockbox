@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+import glob
 import grp
+import hashlib
 import json
 import os
 import pwd
@@ -42,6 +44,14 @@ BUILTINS = {
     "remove-dir",
     "remove-dir-recursive",
     "create-dir",
+    "move-file",
+    "copy-file",
+    "file-info",
+    "file-exists",
+    "file-hash",
+    "disk-usage",
+    "search-files",
+    "append-file",
 }
 
 ALL_COMMANDS = sorted(list(ALLOWED.keys()) + list(BUILTINS))
@@ -262,6 +272,158 @@ def cmd_create_dir(args):
     os.makedirs(target, exist_ok=True)
 
 
+def cmd_move_file(args):
+    if len(args) < 2:
+        die("usage: move-file <src> <dst>")
+
+    src = safe_path(args[0])
+    if not src:
+        die("source path outside /work")
+
+    dst = safe_path(args[1])
+    if not dst:
+        die("destination path outside /work")
+
+    if not os.path.exists(src):
+        die("no such file or directory")
+
+    parent = os.path.dirname(dst)
+    if not os.path.isdir(parent):
+        die("destination parent directory does not exist")
+
+    os.rename(src, dst)
+
+
+def cmd_copy_file(args):
+    if len(args) < 2:
+        die("usage: copy-file <src> <dst>")
+
+    src = safe_path(args[0])
+    if not src:
+        die("source path outside /work")
+
+    dst = safe_path(args[1])
+    if not dst:
+        die("destination path outside /work")
+
+    if not os.path.isfile(src):
+        die("no such file")
+
+    parent = os.path.dirname(dst)
+    if not os.path.isdir(parent):
+        die("destination parent directory does not exist")
+
+    import shutil
+
+    shutil.copy2(src, dst)
+
+
+def cmd_file_info(args):
+    if not args:
+        die("usage: file-info <path>")
+
+    target = safe_path(args[0])
+    if not target:
+        die("path outside /work")
+
+    if not os.path.exists(target):
+        die("no such file or directory")
+
+    sys.stdout.write(json.dumps(file_info_json(target)) + "\n")
+
+
+def cmd_file_exists(args):
+    if not args:
+        die("usage: file-exists <path>")
+
+    target = safe_path(args[0])
+    if not target:
+        sys.stdout.write("false\n")
+        return
+
+    if os.path.exists(target):
+        sys.stdout.write("true\n")
+        return
+
+    sys.stdout.write("false\n")
+
+
+def cmd_file_hash(args):
+    if not args:
+        die("usage: file-hash <path>")
+
+    target = safe_path(args[0])
+    if not target:
+        die("path outside /work")
+
+    if not os.path.isfile(target):
+        die("no such file")
+
+    h = hashlib.sha256()
+    with open(target, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
+
+    sys.stdout.write(h.hexdigest() + "\n")
+
+
+def cmd_disk_usage(args):
+    target = safe_path(args[0] if args else "")
+    if not target:
+        die("path outside /work")
+
+    if not os.path.exists(target):
+        die("no such file or directory")
+
+    if os.path.isfile(target):
+        sys.stdout.write(str(os.path.getsize(target)) + "\n")
+        return
+
+    total = 0
+    for dirpath, _dirnames, filenames in os.walk(target):
+        for fname in filenames:
+            total += os.path.getsize(os.path.join(dirpath, fname))
+
+    sys.stdout.write(str(total) + "\n")
+
+
+def cmd_search_files(args):
+    if not args:
+        die("usage: search-files <pattern>")
+
+    pattern = args[0]
+    matches = glob.glob(pattern, root_dir=WORK_DIR, recursive=True)
+
+    for match in sorted(matches):
+        full = os.path.join(WORK_DIR, match)
+        if os.path.isdir(full):
+            sys.stdout.write(match + "/\n")
+            continue
+        sys.stdout.write(match + "\n")
+
+
+def cmd_append_file(args):
+    if not args:
+        die("usage: append-file <path>")
+
+    target = safe_path(args[0])
+    if not target:
+        die("path outside /work")
+
+    if not os.path.isfile(target):
+        die("no such file")
+
+    with open(target, "ab") as f:
+        while True:
+            chunk = sys.stdin.buffer.read(65536)
+            if not chunk:
+                break
+            f.write(chunk)
+
+
 def main():
     cmd = os.environ.get("SSH_ORIGINAL_COMMAND", "").strip()
 
@@ -294,6 +456,14 @@ def main():
         "remove-dir": cmd_remove_dir,
         "remove-dir-recursive": cmd_remove_dir_recursive,
         "create-dir": cmd_create_dir,
+        "move-file": cmd_move_file,
+        "copy-file": cmd_copy_file,
+        "file-info": cmd_file_info,
+        "file-exists": cmd_file_exists,
+        "file-hash": cmd_file_hash,
+        "disk-usage": cmd_disk_usage,
+        "search-files": cmd_search_files,
+        "append-file": cmd_append_file,
     }
 
     if binary in builtins:

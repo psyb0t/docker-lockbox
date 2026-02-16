@@ -232,6 +232,76 @@ run_test "get abs path remapped" "get /etc/passwd" "no such file"
 run_test_negative "get abs path no leak" "get /etc/passwd" "root:"
 
 echo ""
+echo "=== Testing new file operations ==="
+
+# --- move-file ---
+echo "move test" | ssh_cmd_stdin "put moveme.txt"
+ssh_cmd "move-file moveme.txt moved.txt"
+run_test "move-file creates dst" "get moved.txt" "move test"
+run_test_negative "move-file removes src" "list-files" "moveme.txt"
+run_test "move-file traversal blocked" "move-file ../../etc/passwd /tmp/x" "path outside /work"
+
+# --- copy-file ---
+ssh_cmd "copy-file moved.txt copied.txt"
+run_test "copy-file creates dst" "get copied.txt" "move test"
+run_test "copy-file keeps src" "get moved.txt" "move test"
+run_test "copy-file traversal blocked" "copy-file ../../etc/passwd /tmp/x" "path outside /work"
+
+# --- file-info ---
+run_test "file-info has name" "file-info moved.txt" '"name"'
+run_test "file-info has size" "file-info moved.txt" '"size"'
+run_test "file-info has mode" "file-info moved.txt" '"mode"'
+run_test "file-info has isDir" "file-info moved.txt" '"isDir"'
+run_test "file-info nonexistent" "file-info nope.txt" "no such file"
+run_test "file-info traversal blocked" "file-info ../../etc/passwd" "path outside /work"
+
+# --- file-exists ---
+run_test "file-exists true" "file-exists moved.txt" "true"
+run_test "file-exists false" "file-exists nope.txt" "false"
+run_test "file-exists traversal false" "file-exists ../../etc/passwd" "false"
+
+# --- file-hash ---
+# sha256 of "move test\n" = known hash
+EXPECTED_HASH=$(printf "move test\n" | sha256sum | awk '{print $1}')
+run_test "file-hash correct" "file-hash moved.txt" "$EXPECTED_HASH"
+run_test "file-hash nonexistent" "file-hash nope.txt" "no such file"
+run_test "file-hash traversal blocked" "file-hash ../../etc/passwd" "path outside /work"
+
+# --- disk-usage ---
+USAGE_OUTPUT=$(ssh_cmd "disk-usage")
+if echo "$USAGE_OUTPUT" | grep -qE '^[0-9]+$'; then
+	pass "disk-usage returns number"
+else
+	fail "disk-usage returns number" "$USAGE_OUTPUT"
+fi
+run_test "disk-usage traversal blocked" "disk-usage ../../etc" "path outside /work"
+
+# --- search-files ---
+ssh_cmd "create-dir searchdir/nested"
+echo "findme" | ssh_cmd_stdin "put searchdir/found.txt"
+echo "findme" | ssh_cmd_stdin "put searchdir/nested/deep.txt"
+run_test "search-files finds file" "search-files **/*.txt" "found.txt"
+run_test "search-files finds nested" "search-files **/*.txt" "deep.txt"
+SEARCH_EMPTY=$(ssh_cmd "search-files **/*.xyz")
+if [ -z "$SEARCH_EMPTY" ]; then
+	pass "search-files no match returns empty"
+else
+	fail "search-files no match returns empty" "$SEARCH_EMPTY"
+fi
+
+# --- append-file ---
+echo " appended" | ssh_cmd_stdin "append-file moved.txt"
+run_test "append-file adds content" "get moved.txt" "appended"
+run_test "append-file keeps original" "get moved.txt" "move test"
+run_test "append-file nonexistent" "append-file nope.txt" "no such file"
+run_test "append-file traversal blocked" "append-file ../../etc/passwd" "path outside /work"
+
+# cleanup test files
+ssh_cmd "remove-dir-recursive searchdir"
+ssh_cmd "remove-file moved.txt"
+ssh_cmd "remove-file copied.txt"
+
+echo ""
 echo "=== Testing host key persistence ==="
 
 # Create a host_keys dir, start container with it mounted, grab fingerprint,
@@ -406,9 +476,9 @@ YAMLEOF
 
 "$SCRIPT_DIR/create_installer.sh" "$NOENV_CONFIG" >"$NOENV_OUTPUT" 2>&1
 
-# docker-compose environment should only have LOCKBOX_UID/GID + PROCESSING_UNIT, no extra env vars
+# docker-compose environment should only have LOCKBOX_UID/GID + PROCESSING_UNIT + overlay env vars, no extra env vars
 env_lines=$(grep -c '^\s*- [A-Z].*=.*\$' "$NOENV_OUTPUT" 2>/dev/null || echo "0")
-if [ "$env_lines" -le 3 ]; then
+if [ "$env_lines" -le 5 ]; then
 	pass "no extra env vars without environment config"
 else
 	fail "no extra env vars without environment config" "found $env_lines env lines"
