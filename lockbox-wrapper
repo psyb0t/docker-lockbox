@@ -424,7 +424,22 @@ def cmd_append_file(args):
             f.write(chunk)
 
 
+def _load_environment():
+    """Load /etc/environment into os.environ for vars sshd doesn't pass through."""
+    try:
+        with open("/etc/environment") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                os.environ.setdefault(k, v)
+    except FileNotFoundError:
+        pass
+
+
 def main():
+    _load_environment()
     cmd = os.environ.get("SSH_ORIGINAL_COMMAND", "").strip()
 
     if not cmd:
