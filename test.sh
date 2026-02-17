@@ -437,17 +437,17 @@ else
 	fail "CLI help shows --gpus flag with description"
 fi
 
-# start command handles environment flags
-if grep -q 'TESTAPP_DEVICE=\$1' "$INSTALLER_OUTPUT"; then
-	pass "start -g updates TESTAPP_DEVICE in .env"
+# start command handles environment flags via set_env
+if grep -q 'set_env TESTAPP_DEVICE' "$INSTALLER_OUTPUT"; then
+	pass "start -g updates TESTAPP_DEVICE via set_env"
 else
-	fail "start -g updates TESTAPP_DEVICE in .env" "$(grep -n 'DEVICE' "$INSTALLER_OUTPUT" | head -5)"
+	fail "start -g updates TESTAPP_DEVICE via set_env" "$(grep -n 'DEVICE' "$INSTALLER_OUTPUT" | head -5)"
 fi
 
-if grep -q 'TESTAPP_GPUS=\$1' "$INSTALLER_OUTPUT"; then
-	pass "start --gpus updates TESTAPP_GPUS in .env"
+if grep -q 'set_env TESTAPP_GPUS' "$INSTALLER_OUTPUT"; then
+	pass "start --gpus updates TESTAPP_GPUS via set_env"
 else
-	fail "start --gpus updates TESTAPP_GPUS in .env" "$(grep -n 'GPUS' "$INSTALLER_OUTPUT" | head -5)"
+	fail "start --gpus updates TESTAPP_GPUS via set_env" "$(grep -n 'GPUS' "$INSTALLER_OUTPUT" | head -5)"
 fi
 
 # Volumes still work alongside environment
@@ -608,17 +608,113 @@ else
 	fail "gpu: CLI help shows --gpus flag"
 fi
 
-# start handles --processing-unit and --gpus
-if grep -q 'GPUAPP_PROCESSING_UNIT=\$1' "$GPU_OUTPUT"; then
-	pass "gpu: start --processing-unit updates PROCESSING_UNIT"
+# start handles --processing-unit and --gpus via set_env
+if grep -q 'set_env GPUAPP_PROCESSING_UNIT' "$GPU_OUTPUT"; then
+	pass "gpu: start --processing-unit updates PROCESSING_UNIT via set_env"
 else
-	fail "gpu: start --processing-unit updates PROCESSING_UNIT"
+	fail "gpu: start --processing-unit updates PROCESSING_UNIT via set_env"
 fi
 
-if grep -q 'GPUAPP_GPUS=\$1' "$GPU_OUTPUT"; then
-	pass "gpu: start --gpus updates GPUS"
+if grep -q 'set_env GPUAPP_GPUS' "$GPU_OUTPUT"; then
+	pass "gpu: start --gpus updates GPUS via set_env"
 else
-	fail "gpu: start --gpus updates GPUS"
+	fail "gpu: start --gpus updates GPUS via set_env"
+fi
+
+# set_env helper is present in generated CLI
+if grep -q 'set_env()' "$GPU_OUTPUT"; then
+	pass "gpu: set_env helper function present"
+else
+	fail "gpu: set_env helper function present"
+fi
+
+# All flag handlers use set_env (none should use sed for env updates)
+if grep -q 'sed -i "s/^.*_PORT=/' "$GPU_OUTPUT"; then
+	fail "gpu: no sed-based env updates (should use set_env)"
+else
+	pass "gpu: no sed-based env updates (all use set_env)"
+fi
+
+echo ""
+echo "=== Testing set_env upgrade scenario ==="
+
+# Simulate an upgrade scenario: .env exists but is missing keys that new
+# CLI flags try to set. The old sed approach would silently do nothing;
+# set_env should add missing keys.
+SETENV_DIR="$TMPDIR/setenv-test"
+mkdir -p "$SETENV_DIR"
+
+# Extract the CLI wrapper from the generated installer
+SETENV_INSTALLER="$TMPDIR/setenv-installer.sh"
+"$SCRIPT_DIR/create_installer.sh" "$GPU_CONFIG" >"$SETENV_INSTALLER" 2>&1
+
+# Pull out just the CLI script between the SCRIPT heredoc markers
+SETENV_CLI="$SETENV_DIR/cli.sh"
+sed -n "/^cat > \"\$INSTALL_PATH\" << 'SCRIPT'/,/^SCRIPT/p" "$SETENV_INSTALLER" |
+	tail -n +2 | head -n -1 >"$SETENV_CLI"
+
+# Replace the placeholder home path
+sed -i "s|__GPUAPP_HOME__|$SETENV_DIR|g" "$SETENV_CLI"
+chmod +x "$SETENV_CLI"
+
+# Create a minimal .env (simulating old install that's missing new keys)
+cat >"$SETENV_DIR/.env" <<'MINENV'
+GPUAPP_MEMSWAP=0
+MINENV
+
+# Create stub docker-compose files so compose() doesn't blow up
+touch "$SETENV_DIR/docker-compose.yml"
+touch "$SETENV_DIR/docker-compose.cuda.yml"
+touch "$SETENV_DIR/docker-compose.rocm.yml"
+
+# Source the CLI and call set_env directly
+(
+	export ENV_FILE="$SETENV_DIR/.env"
+	# shellcheck disable=SC1090
+	. "$SETENV_CLI"
+	set_env GPUAPP_PORT 3333
+	set_env GPUAPP_MEMORY 4g
+	set_env GPUAPP_PROCESSING_UNIT cuda
+)
+
+# Verify the keys were added
+if grep -q 'GPUAPP_PORT=3333' "$SETENV_DIR/.env"; then
+	pass "set_env adds missing GPUAPP_PORT"
+else
+	fail "set_env adds missing GPUAPP_PORT" "$(cat "$SETENV_DIR/.env")"
+fi
+
+if grep -q 'GPUAPP_MEMORY=4g' "$SETENV_DIR/.env"; then
+	pass "set_env adds missing GPUAPP_MEMORY"
+else
+	fail "set_env adds missing GPUAPP_MEMORY" "$(cat "$SETENV_DIR/.env")"
+fi
+
+if grep -q 'GPUAPP_PROCESSING_UNIT=cuda' "$SETENV_DIR/.env"; then
+	pass "set_env adds missing GPUAPP_PROCESSING_UNIT"
+else
+	fail "set_env adds missing GPUAPP_PROCESSING_UNIT" "$(cat "$SETENV_DIR/.env")"
+fi
+
+# Verify set_env replaces existing key (not duplicates)
+(
+	export ENV_FILE="$SETENV_DIR/.env"
+	# shellcheck disable=SC1090
+	. "$SETENV_CLI"
+	set_env GPUAPP_PORT 4444
+)
+
+PORT_COUNT=$(grep -c 'GPUAPP_PORT=' "$SETENV_DIR/.env")
+if [ "$PORT_COUNT" -eq 1 ]; then
+	pass "set_env replaces existing key (no duplicates)"
+else
+	fail "set_env replaces existing key (no duplicates)" "found $PORT_COUNT lines"
+fi
+
+if grep -q 'GPUAPP_PORT=4444' "$SETENV_DIR/.env"; then
+	pass "set_env updates value correctly"
+else
+	fail "set_env updates value correctly" "$(grep GPUAPP_PORT "$SETENV_DIR/.env")"
 fi
 
 echo ""
