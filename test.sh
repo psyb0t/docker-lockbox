@@ -648,14 +648,9 @@ mkdir -p "$SETENV_DIR"
 SETENV_INSTALLER="$TMPDIR/setenv-installer.sh"
 "$SCRIPT_DIR/create_installer.sh" "$GPU_CONFIG" >"$SETENV_INSTALLER" 2>&1
 
-# Pull out just the CLI script between the SCRIPT heredoc markers
+# Extract just the set_env function from the generated installer
 SETENV_CLI="$SETENV_DIR/cli.sh"
-sed -n "/^cat > \"\$INSTALL_PATH\" << 'SCRIPT'/,/^SCRIPT/p" "$SETENV_INSTALLER" |
-	tail -n +2 | head -n -1 >"$SETENV_CLI"
-
-# Replace the placeholder home path
-sed -i "s|__GPUAPP_HOME__|$SETENV_DIR|g" "$SETENV_CLI"
-chmod +x "$SETENV_CLI"
+sed -n '/^set_env() {/,/^}/p' "$SETENV_INSTALLER" >"$SETENV_CLI"
 
 # Create a minimal .env (simulating old install that's missing new keys)
 cat >"$SETENV_DIR/.env" <<'MINENV'

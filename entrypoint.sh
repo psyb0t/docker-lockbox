@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-# Rename lockbox user/group if LOCKBOX_USER is set
+# Rename lockbox user/group if LOCKBOX_USER is set (skip if already renamed)
 TARGET_USER="${LOCKBOX_USER:-lockbox}"
-if [ "$TARGET_USER" != "lockbox" ]; then
+if [ "$TARGET_USER" != "lockbox" ] && getent group lockbox >/dev/null 2>&1; then
 	groupmod -n "$TARGET_USER" lockbox
 	usermod -l "$TARGET_USER" -d "/home/$TARGET_USER" -m lockbox
 	sed -i "s/AllowUsers lockbox/AllowUsers $TARGET_USER/" /etc/ssh/sshd_config
