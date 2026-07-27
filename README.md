@@ -1,6 +1,8 @@
 # docker-lockbox
 
-[![Docker Hub](https://img.shields.io/docker/v/psyb0t/lockbox?sort=semver&label=Docker%20Hub)](https://hub.docker.com/r/psyb0t/lockbox)
+[![version](https://raw.githubusercontent.com/psyb0t/docker-lockbox/badges/version.svg)](https://github.com/psyb0t/docker-lockbox/releases)
+[![license](https://raw.githubusercontent.com/psyb0t/docker-lockbox/badges/license.svg)](LICENSE)
+[![Docker Pulls](https://img.shields.io/docker/pulls/psyb0t/lockbox?style=flat-square)](https://hub.docker.com/r/psyb0t/lockbox)
 
 Locked-down SSH container with sandboxed file operations. Use as a base image to build your own dedicated tool containers - just provide a list of allowed commands and install your binaries. No shell access, no injection bullshit.
 
