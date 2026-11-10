@@ -2,6 +2,13 @@
 
 All notable changes per release. Versions follow [semver](https://semver.org).
 
+## v2.1.9 — 2026-11-10
+
+- The documentation is published at https://psyb0t.github.io/docker-lockbox/. The file operations, configuration, installer generator, security, architecture, troubleshooting and development reference moved there from the README, which keeps the overview, the quick start and links.
+- Every branch push now runs lint and the integration tests before anything is built. A push to `main` publishes `:latest` and `:sha-<commit>`, and a release tag promotes that same image instead of rebuilding it, then cuts the GitHub release.
+- Added `make lint`, which runs shellcheck on the shell scripts and flake8 on `lockbox-wrapper` from pinned images.
+- Added Buy Me a Coffee to the funding links, and committed `AGENTS.md` plus project rules in `.agents/rules/` for coding agents.
+
 ## v2.1.8 — 2026-08-01
 
 CI only — no image or wrapper changes. The published image is identical to v2.1.7.

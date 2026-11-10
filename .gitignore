@@ -1,5 +1,10 @@
-CLAUDE.md
 .test-tmp-*
 .research_files
 commit.sh
 git-update.sh
+
+# Local agent and editor settings.
+*.local.json
+
+# Local build output, such as the docs site from make docs.
+.testing/

@@ -39,23 +39,23 @@ while IFS= read -r line; do
 	fi
 
 	[[ "$line" =~ flag:[[:space:]]*(.*) ]] && {
-		vflag[$vc]="${BASH_REMATCH[1]}"
+		vflag[vc]="${BASH_REMATCH[1]}"
 		continue
 	}
 	[[ "$line" =~ env:[[:space:]]*(.*) ]] && {
-		venv[$vc]="${BASH_REMATCH[1]}"
+		venv[vc]="${BASH_REMATCH[1]}"
 		continue
 	}
 	[[ "$line" =~ mount:[[:space:]]*(.*) ]] && {
-		vmount[$vc]="${BASH_REMATCH[1]}"
+		vmount[vc]="${BASH_REMATCH[1]}"
 		continue
 	}
 	[[ "$line" =~ default:[[:space:]]*(.*) ]] && {
-		vdefault[$vc]="${BASH_REMATCH[1]}"
+		vdefault[vc]="${BASH_REMATCH[1]}"
 		continue
 	}
 	[[ "$line" =~ description:[[:space:]]*(.*) ]] && {
-		vdesc[$vc]="${BASH_REMATCH[1]}"
+		vdesc[vc]="${BASH_REMATCH[1]}"
 		continue
 	}
 done <"$CONFIG"
@@ -82,23 +82,23 @@ while IFS= read -r line; do
 	fi
 
 	[[ "$line" =~ flag:[[:space:]]*(.*) ]] && {
-		eflag[$ec]="${BASH_REMATCH[1]}"
+		eflag[ec]="${BASH_REMATCH[1]}"
 		continue
 	}
 	[[ "$line" =~ container_env:[[:space:]]*(.*) ]] && {
-		econtainerenv[$ec]="${BASH_REMATCH[1]}"
+		econtainerenv[ec]="${BASH_REMATCH[1]}"
 		continue
 	}
 	[[ "$line" =~ env:[[:space:]]*(.*) ]] && {
-		eenv[$ec]="${BASH_REMATCH[1]}"
+		eenv[ec]="${BASH_REMATCH[1]}"
 		continue
 	}
 	[[ "$line" =~ default:[[:space:]]*(.*) ]] && {
-		edefault[$ec]="${BASH_REMATCH[1]}"
+		edefault[ec]="${BASH_REMATCH[1]}"
 		continue
 	}
 	[[ "$line" =~ description:[[:space:]]*(.*) ]] && {
-		edesc[$ec]="${BASH_REMATCH[1]}"
+		edesc[ec]="${BASH_REMATCH[1]}"
 		continue
 	}
 done <"$CONFIG"

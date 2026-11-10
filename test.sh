@@ -121,7 +121,7 @@ CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddres
 echo "Container IP: $CONTAINER_IP"
 
 echo "Waiting for sshd..."
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
 	if docker exec "$CONTAINER" pgrep sshd >/dev/null 2>&1; then
 		break
 	fi
@@ -154,6 +154,7 @@ echo "=== Testing command injection ==="
 run_test_negative "&& injection blocked" "list-files && cat /etc/passwd" "root:"
 run_test_negative "; injection blocked" "list-files; cat /etc/passwd" "root:"
 run_test_negative "| injection blocked" "list-files | cat /etc/passwd" "root:"
+# shellcheck disable=SC2016 # the literal $() must reach the wrapper unexpanded
 run_test_negative "\$() injection blocked" 'list-files $(cat /etc/passwd)' "root:"
 
 echo ""
@@ -321,7 +322,7 @@ docker cp "$AUTHKEYS" "$CONTAINER2:/etc/lockbox/authorized_keys"
 docker exec "$CONTAINER2" chmod 644 /etc/lockbox/authorized_keys
 
 # Wait for sshd
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
 	if docker exec "$CONTAINER2" pgrep sshd >/dev/null 2>&1; then break; fi
 	sleep 0.5
 done
@@ -348,7 +349,7 @@ docker run -d \
 	-v "$HOST_KEYS_DIR:/etc/lockbox/host_keys" \
 	"$IMAGE" >/dev/null
 
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
 	if docker exec "$CONTAINER3" pgrep sshd >/dev/null 2>&1; then break; fi
 	sleep 0.5
 done
@@ -663,6 +664,9 @@ touch "$SETENV_DIR/docker-compose.cuda.yml"
 touch "$SETENV_DIR/docker-compose.rocm.yml"
 
 # Source the CLI and call set_env directly
+# Each subshell sets its own ENV_FILE on purpose, so nothing leaks into the
+# rest of the suite.
+# shellcheck disable=SC2030
 (
 	export ENV_FILE="$SETENV_DIR/.env"
 	# shellcheck disable=SC1090
@@ -692,6 +696,7 @@ else
 fi
 
 # Verify set_env replaces existing key (not duplicates)
+# shellcheck disable=SC2031
 (
 	export ENV_FILE="$SETENV_DIR/.env"
 	# shellcheck disable=SC1090
