@@ -8,3 +8,4 @@ git-update.sh
 
 # Local build output, such as the docs site from make docs.
 .testing/
+git-update.sh.debot

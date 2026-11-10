@@ -8,5 +8,4 @@ Applies to `lockbox-wrapper`.
 - Report errors with `die(msg)`: `Error: <msg>` on stderr, exit 1. Keep existing messages word for word, because `test.sh` greps for them and downstream users script against them.
 - A new built-in is a `cmd_<name>(args)` function, a name in `BUILTINS`, an entry in the `builtins` dict in `main()`, tests in `test.sh`, and a row in `docs/file-operations.md`.
 - Stream file data in 64 KiB chunks through `sys.stdin.buffer` and `sys.stdout.buffer`, as `get`, `put` and `append-file` do. Do not read whole files into memory.
-- Early returns, no `else` after a branch that returns or dies.
-- `make lint-python` runs flake8 at line length 88 (black's default) and must stay clean.
+- `make lint-python` runs flake8 at line length 88 (black's default).
